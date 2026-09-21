@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Glass Pretzel · 本地复刻（原作 Jaenam）</title>
+<style>
+  :root {
+    --accent: #6ea8ff;
+    --panel-bg: rgba(14, 17, 28, 0.78);
+    --panel-border: rgba(255, 255, 255, 0.09);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #f2f2f0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  #glcanvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
+  #glcanvas.dragging { cursor: grabbing; }
+
+  .title-card {
+    position: fixed; left: 18px; bottom: 16px; z-index: 5;
+    color: rgba(20, 26, 40, 0.85);
+    font-size: 12px; line-height: 1.7; user-select: none;
+    text-shadow: 0 1px 0 rgba(255,255,255,.6);
+    pointer-events: none;
+  }
+  .title-card b { font-size: 13px; }
+  .title-card a { color: inherit; }
+
+  #panel {
+    position: fixed; top: 16px; right: 16px; z-index: 10;
+    width: 296px; max-height: calc(100vh - 32px);
+    background: var(--panel-bg);
+    backdrop-filter: blur(14px) saturate(1.3);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    color: #e8ecf4;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    display: flex; flex-direction: column;
+    transition: transform .28s cubic-bezier(.4,0,.2,1), opacity .28s;
+  }
+  #panel.hidden { transform: translateX(calc(100% + 24px)); opacity: 0; pointer-events: none; }
+  #panel .head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--panel-border);
+    font-size: 13px; font-weight: 600; letter-spacing: .3px;
+  }
+  #panel .head .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  #panel .head .spacer { flex: 1; }
+  #panel .body { overflow-y: auto; padding: 8px 14px 12px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+  #panel .body::-webkit-scrollbar { width: 6px; }
+  #panel .body::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 3px; }
+
+  .sect {
+    padding: 10px 0 1px; font-size: 10.5px; font-weight: 600;
+    letter-spacing: 3px; color: #7e8aa4; user-select: none;
+  }
+  .sect:not(:first-child) { margin-top: 4px; border-top: 1px solid rgba(255,255,255,.06); padding-top: 12px; }
+
+  .ctrl { padding: 7px 0 3px; }
+  .ctrl .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; margin-bottom: 3px; }
+  .ctrl .row .name { color: #c3ccdd; }
+  .ctrl .row .val { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 12px; }
+  .ctrl input[type=range] { width: 100%; height: 22px; accent-color: var(--accent); cursor: pointer; background: transparent; }
+
+  .btns { display: flex; gap: 8px; padding: 10px 0 4px; }
+  .btns button {
+    flex: 1; padding: 7px 0; font-size: 12px;
+    color: #dfe6f2; background: rgba(255,255,255,.07);
+    border: 1px solid var(--panel-border); border-radius: 8px;
+    cursor: pointer; transition: background .15s;
+  }
+  .btns button:hover { background: rgba(255,255,255,.14); }
+  .btns button.primary { background: rgba(110,168,255,.18); border-color: rgba(110,168,255,.45); }
+
+  #toggle-btn {
+    position: fixed; top: 16px; right: 16px; z-index: 9;
+    width: 38px; height: 38px; border-radius: 11px;
+    background: var(--panel-bg); border: 1px solid var(--panel-border);
+    color: #dfe6f2; font-size: 17px; cursor: pointer;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    display: none; align-items: center; justify-content: center;
+  }
+  #toggle-btn.show { display: flex; }
+
+  #fps {
+    position: fixed; top: 16px; left: 16px; z-index: 5;
+    font-size: 11px; color: rgba(20,26,40,.6);
+    font-variant-numeric: tabular-nums; user-select: none; pointer-events: none;
+    text-shadow: 0 1px 0 rgba(255,255,255,.6);
+  }
+
+  #err {
+    position: fixed; inset: auto 16px 16px 16px; z-index: 20; display: none;
+    max-height: 45vh; overflow: auto;
+    background: rgba(40, 8, 12, .92); color: #ffb4be;
+    border: 1px solid rgba(255, 90, 110, .4); border-radius: 10px;
+    padding: 12px 14px; font: 11.5px/1.55 ui-monospace, Menlo, monospace;
+    white-space: pre-wrap;
+  }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 76px; z-index: 30;
+    transform: translateX(-50%) translateY(8px);
+    background: rgba(14, 17, 28, .92); color: #e8ecf4;
+    border: 1px solid var(--panel-border); border-radius: 10px;
+    padding: 9px 16px; font-size: 12.5px; line-height: 1.5;
+    max-width: min(78vw, 560px); white-space: pre-wrap; text-align: center;
+    opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<div id="fps"></div>
+
+<button id="toggle-btn" title="显示控制面板 (H)">⚙</button>
+
+<div id="panel">
+  <div class="head"><span class="dot"></span>Glass Pretzel · 参数<span class="spacer"></span></div>
+  <div class="body">
+    <div class="btns">
+      <button id="btn-preset-mine" title="恢复琥珀橙定稿">🎨 我的定稿</button>
+      <button id="btn-preset-orig" title="恢复 Shadertoy 原版参数">🧊 原版</button>
+      <button id="btn-snap" title="保存当前画面为 PNG（不含面板）">📷 快照</button>
+    </div>
+    <div class="btns">
+      <button id="btn-pause" class="primary">⏸ 暂停</button>
+      <button id="btn-reset" title="恢复到「我的定稿」">↺ 重置</button>
+      <button id="btn-hide" title="收起面板 (H)">✕</button>
+    </div>
+    <div class="btns">
+      <button id="btn-link" title="把当前全部参数编码进链接，收藏或分享即可还原此画面">🔗 复制链接</button>
+      <button id="btn-import" title="粘贴参数链接或 JSON 还原画面">📥 导入</button>
+      <button id="btn-dice" title="在滑块范围内随机一组参数">🎲 随机</button>
+    </div>
+    <div id="ctrls"></div>
+  </div>
+</div>
+
+<div class="title-card">
+  <b>Glass Pretzel · 本地复刻</b><br>
+  原作 © Jaenam（CC BY-NC-SA 4.0）· shadertoy.com/view/fcVXDd<br>
+  拖动旋转 · 滚轮缩放 · 空格 暂停 · H 面板 · R 重置<br>
+  🔥 快速划过它试试 —— 越快越激烈，离开后慢慢冷静下来
+</div>
+
+<div id="err"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+ * Glass Pretzel — 本地参数化复刻
+ * 原作: Jaenam (https://www.shadertoy.com/view/fcVXDd)
+ * License: CC BY-NC-SA 4.0
+ * 基于作者附在原帖注释中的可读版本，将常量改为 uniform 以便调节。
+ * ============================================================ */
+
+const VERT = `#version 300 es
+void main() {
+  vec2 v = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(v * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+const FRAG = `#version 300 es
+precision highp float;
+
+uniform vec3  iResolution;
+uniform float iTime;
+uniform float uSpeed;      // 动画速度（JS 端作用在时间累加器上）
+uniform float uTwist;      // 扭转强度      (原 1.5)
+uniform float uRadius;     // 主体半径      (原 2.0)
+uniform float uGap;        // 切口宽度      (原 0.7)
+uniform float uGapOff;     // 切口偏移      (原 0)
+uniform float uStretch;    // 纵向拉伸      (原 1)
+uniform float uWobble;     // 波浪起伏      (原 0)
+uniform float uTube;       // 管径粗细      (原 0.4)
+uniform float uStep;       // 步进系数·辉光密度 (原 0.15)
+uniform float uEps;        // 最小步长      (原 0.01)
+uniform int   uIters;      // 迭代次数      (原 100)
+uniform float uCamDist;    // 相机距离      (原 5.0)
+uniform float uExposure;   // 曝光倍率      (原 1.0, 作用于 1e-6)
+uniform float uGlowGain;   // 辉光增益      (原 1)
+uniform float uPow;        // 光晕锐度      (原 2)
+uniform float uDrift;      // 流光速度      (原 0)
+uniform float uColorFreq;  // 色彩频率      (原 0.1)
+uniform float uHue;        // 色相偏移      (原 0)
+uniform float uWarmth;     // 冷暖色调      (原 1)
+uniform float uHueRot;     // 色相旋转      (原 0)
+uniform float uBase;       // 亮度基底      (原 1.1)
+uniform float uCoef;       // 暗部浓度      (原 0.3)
+uniform float uDrag;       // 鼠标拖拽附加旋转
+uniform float uAgit;       // 鼠标互动激烈度 0..1（JS 端包络）
+uniform float uAgitWarm;   // 激烈时暖橙渗色强度
+uniform float uAgitDef;    // 激烈时形变幅度（解旋 + 行波蠕动）
+uniform float uTear;       // 撕裂程度：激烈到临界时切口撕开、管径抽细
+uniform int   uMaskMode;   // 1 = 输出物体能量掩码（供 JS 回读做触碰判定）
+
+out vec4 fragColor;
+
+#define R(a) mat2(cos(a+vec4(0,33,11,0)))
+
+vec3 hueRotate(vec3 c, float a) {
+  const vec3 k = vec3(0.57735);
+  float ca = cos(a), sa = sin(a);
+  return c*ca + cross(k, c)*sa + k*dot(k, c)*(1.-ca);
+}
+
+void mainImage(out vec4 O, vec2 I)
+{
+    float i,d,s,a;
+    vec3 p,r=iResolution;
+
+    // 平静 ↔ 激动的分界：激烈度 <0.55 无撕裂，>0.95 全开；形变保持结体身份
+    float tear = uTear * smoothstep(0.55, 0.95, uAgit);
+    float unwind = clamp(uAgitDef * uAgit * 0.22, 0.0, 0.5);   // 轻微松旋：结还是那个结
+
+    // —— atan 接缝柔化 ——
+    // a 绕环一圈在 ±π 处跳变 2π，扭转相位随之突跳；有效扭转不是 0.5 整数倍时
+    // 跳变无法被 abs 折叠吸收，会在拦腰处留硬缝。窄带内把两侧旋转向对侧中点
+    // 过渡；错配为零（半/整数扭转）时门控为 0，逐位等于原渲染。
+    float tw = uTwist*(1.0-unwind);
+    float m2pi = 6.2831853*tw;
+    float mtilde = mod(m2pi + 3.14159265, 6.2831853) - 3.14159265;   // 两侧分支最小旋转差
+    float smis = abs(mod(m2pi, 3.14159265)); smis = min(smis, 3.14159265 - smis); // 可见错配 0..π/2
+    float seamGate = smis * (2.0/3.14159265);
+    mat2 RHalfM = R(-mtilde*0.5), RHalfP = R(mtilde*0.5);
+
+    for(O*=i; i++<float(uIters); O.xy+=sin(i*uColorFreq+a+a+vec2(1,3)+uHue+iTime*uDrift)*uGlowGain/s) {
+        p=vec3((r.xy-I-I)/r.y*d,d-uCamDist),
+        p.y/=uStretch,
+        p.xz*=R(iTime+uDrag),
+        a=atan(p.y,p.x),
+        p.x=length(p.xy)-uRadius,
+        p.xz*=R(a*tw),
+        p.xz = mix(p.xz, p.xz*(a>0.0?RHalfM:RHalfP), smoothstep(2.8,3.14159,abs(a))*seamGate),
+        p.x=abs(p.x+uGapOff)-uGap-tear*0.3,
+        p.x+=(uWobble+uAgitDef*uAgit*.3)*sin(p.y*3.),
+        p.x+=uAgitDef*uAgit*(1.0-tear*0.5)*(.4*sin(p.y*7.+iTime*6.)
+                                          +.3*sin(p.z*4.-iTime*8.)),
+        d+=s=uEps+uStep*abs(length(p.xz)-uTube*(1.0-tear*.18));
+    }
+
+    vec4 e = tanh(O*O/1e6);                 // 累计能量：物体的"实度"
+    float energy = clamp(e.x + e.y, 0.0, 1.0);
+
+    if (uMaskMode > 0) {            // 触碰掩码：能量归一，供 JS 回读
+        O = vec4(energy);
+        return;
+    }
+
+    O = abs(uPow-2.)<.001 ? O*O : pow(abs(O),vec4(uPow));
+    O=tanh(O/1e6*uExposure);
+    O.y*=uWarmth;
+    O=uBase+--O.x*(uCoef+O.y*vec4(1,1,0,0));
+    if(abs(uHueRot)>.001) O.rgb=hueRotate(O.rgb,uHueRot);
+    if (uAgit > 0.001) {            // 激烈时向暖橙渗色：按物体能量加权，背景不受染
+        float w = uAgit * uAgit * uAgitWarm * energy;
+        O.rgb = mix(O.rgb, vec3(1.0, 0.55, 0.18), w);
+    }
+}
+
+void main() {
+  vec4 c = vec4(0.0);
+  mainImage(c, gl_FragCoord.xy);
+  fragColor = vec4(c.rgb, 1.0);
+}`;
+
+/* ---------------- 参数定义 ---------------- */
+
+const PARAMS = [
+  { key: "speed",     group: "动画", label: "动画速度",        min: 0,    max: 3,     step: 0.01,  def: 1 },
+  { key: "twist",     group: "形状", label: "扭转强度",        min: 0,    max: 4,     step: 0.01,  def: 1.5 },
+  { key: "radius",    group: "形状", label: "主体半径",        min: 1,    max: 4,     step: 0.01,  def: 2 },
+  { key: "gap",       group: "形状", label: "切口宽度",        min: 0,    max: 1.5,   step: 0.01,  def: 0.7 },
+  { key: "gapOff",    group: "形状", label: "切口偏移",        min: -0.5, max: 0.5,   step: 0.005, def: 0 },
+  { key: "stretch",   group: "形状", label: "纵向拉伸",        min: 0.5,  max: 2,     step: 0.01,  def: 1 },
+  { key: "wobble",    group: "形状", label: "波浪起伏",        min: 0,    max: 0.6,   step: 0.005, def: 0 },
+  { key: "tube",      group: "形状", label: "管径粗细",        min: 0.05, max: 1,     step: 0.01,  def: 0.4 },
+  { key: "step",      group: "光效", label: "步长 · 辉光密度", min: 0.02, max: 0.4,   step: 0.005, def: 0.15 },
+  { key: "iters",     group: "光效", label: "迭代次数",        min: 20,   max: 300,   step: 5,     def: 100, int: true },
+  { key: "camDist",   group: "光效", label: "相机距离",        min: 2,    max: 12,    step: 0.1,   def: 5 },
+  { key: "exposure",  group: "光效", label: "曝光",            min: 0.2,  max: 4,     step: 0.05,  def: 1 },
+  { key: "glowGain",  group: "光效", label: "辉光增益",        min: 0.2,  max: 2,     step: 0.01,  def: 1 },
+  { key: "pow",       group: "光效", label: "光晕锐度",        min: 1,    max: 4,     step: 0.05,  def: 2 },
+  { key: "drift",     group: "光效", label: "流光速度",        min: 0,    max: 2,     step: 0.01,  def: 0 },
+  { key: "colorFreq", group: "颜色", label: "色彩频率",        min: 0,    max: 0.5,   step: 0.005, def: 0.1 },
+  { key: "hue",       group: "颜色", label: "色相偏移",        min: 0,    max: 6.283, step: 0.01,  def: 0 },
+  { key: "warmth",    group: "颜色", label: "冷暖色调",        min: 0.2,  max: 2.5,   step: 0.01,  def: 1 },
+  { key: "hueRot",    group: "颜色", label: "色相旋转",        min: 0,    max: 6.283, step: 0.01,  def: 0 },
+  { key: "base",      group: "颜色", label: "亮度基底",        min: 0.9,  max: 1.6,   step: 0.005, def: 1.1 },
+  { key: "coef",      group: "颜色", label: "暗部浓度",        min: 0,    max: 1,     step: 0.01,  def: 0.3 },
+  { key: "agitPower", group: "互动", label: "反应激烈度",      min: 0,    max: 2,     step: 0.05,  def: 1 },
+  { key: "agitDeform",group: "互动", label: "变形幅度",        min: 0,    max: 1.5,   step: 0.05,  def: 0.5 },
+  { key: "agitTear",  group: "互动", label: "撕裂程度",        min: 0,    max: 1,     step: 0.05,  def: 0.35 },
+  { key: "agitHue",   group: "互动", label: "变色幅度",        min: 0,    max: 3.1416,step: 0.01,  def: 2.6 },
+  { key: "agitWarm",  group: "互动", label: "暖橙渗色",        min: 0,    max: 1,     step: 0.01,  def: 0.5 },
+  { key: "agitSens",  group: "互动", label: "触碰灵敏度",      min: 0.3,  max: 3,     step: 0.05,  def: 1 },
+  { key: "renderScale", group: "显示", label: "渲染精度",      min: 0.4,  max: 1,     step: 0.05,  def: 0.75 },
+];
+
+const P = {};
+for (const p of PARAMS) P[p.key] = p;
+
+/* ------- 预设 ------- */
+
+// 「我的定稿」：用户 2026-09-20 调定的琥珀橙配色（读自参数面板截图）
+const MY_PRESET = {
+  speed: 1, twist: 1.5, radius: 2, gap: 0.7, gapOff: 0, stretch: 1, wobble: 0,
+  tube: 0.4, step: 0.15, iters: 100, camDist: 5,
+  exposure: 1.2, glowGain: 1.35, pow: 2, drift: 0,
+  colorFreq: 0.1, hue: 0, warmth: 0.6, hueRot: 3.05, base: 0.9, coef: 0.78,
+  agitPower: 1, agitDeform: 0.5, agitTear: 0.35, agitHue: 2.6, agitWarm: 0.5, agitSens: 1, renderScale: 0.75,
+};
+
+// 「原版」：Shadertoy 原始参数
+const ORIG_PRESET = {
+  speed: 1, twist: 1.5, radius: 2, gap: 0.7, gapOff: 0, stretch: 1, wobble: 0,
+  tube: 0.4, step: 0.15, iters: 100, camDist: 5,
+  exposure: 1, glowGain: 1, pow: 2, drift: 0,
+  colorFreq: 0.1, hue: 0, warmth: 1, hueRot: 0, base: 1.1, coef: 0.3,
+  agitPower: 1, agitDeform: 0.5, agitTear: 0.35, agitHue: 2.6, agitWarm: 0.5, agitSens: 1, renderScale: 0.75,
+};
+
+// 启动默认值 = 我的定稿（R 重置也回到这里；想看原版点面板上的「原版」按钮）
+for (const p of PARAMS) p.def = MY_PRESET[p.key];
+
+const STORE_KEY = "glass-pretzel-params-v2";
+
+loadSaved();
+applyHashParams();   // 链接里的参数优先于 localStorage
+
+function loadSaved() {
+  try {
+    const o = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    for (const p of PARAMS) if (typeof o[p.key] === "number") p.value = o[p.key];
+  } catch (e) {}
+  for (const p of PARAMS) if (p.value === undefined) p.value = p.def;
+}
+function saveParams() {
+  const o = {};
+  for (const p of PARAMS) o[p.key] = p.value;
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) {}
+  syncHash();
+}
+function syncHash() {
+  // 地址栏始终携带当前参数，手动复制地址栏也能还原画面
+  try { history.replaceState(null, "", location.pathname + location.search + "#p=" + encodeParams()); } catch (e) {}
+}
+
+/* ------- 参数编码进 URL：#p=<base64url JSON> ------- */
+
+function encodeParams() {
+  const o = {};
+  for (const p of PARAMS) o[p.key] = p.value;
+  return btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function decodeParams(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return JSON.parse(atob(s));
+}
+function currentParamUrl() {
+  return location.href.split("#")[0] + "#p=" + encodeParams();
+}
+function applyParamValues(o) {
+  for (const p of PARAMS) {
+    const v = o[p.key];
+    if (typeof v === "number" && isFinite(v)) {
+      p.value = Math.min(p.max, Math.max(p.min, p.int ? Math.round(v) : v));
+    }
+  }
+  for (const p of PARAMS) if (p._refresh) p._refresh();
+}
+function applyHashParams() {
+  const m = (location.hash || "").match(/^#p=([A-Za-z0-9\-_]+)/);
+  if (!m) return false;
+  try { applyParamValues(decodeParams(m[1])); saveParams(); return true; } catch (e) { return false; }
+}
+
+/* ---------------- WebGL 初始化 ---------------- */
+
+const canvas = document.getElementById("glcanvas");
+const errBox = document.getElementById("err");
+
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) {
+  errBox.style.display = "block";
+  errBox.textContent = "此浏览器不支持 WebGL2，无法运行。请使用较新的 Chrome / Edge / Firefox / Safari。";
+  throw new Error("no webgl2");
+}
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(sh) || "shader compile failed");
+  }
+  return sh;
+}
+
+let program = null;
+function buildProgram() {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    throw new Error(gl.getProgramInfoLog(prog) || "link failed");
+  }
+  return prog;
+}
+
+try {
+  program = buildProgram();
+} catch (e) {
+  errBox.style.display = "block";
+  errBox.textContent = "着色器编译失败:\n" + e.message;
+  throw e;
+}
+gl.useProgram(program);
+const U = {};
+for (const name of ["iResolution","iTime","uTwist","uRadius","uGap","uGapOff","uStretch","uWobble","uTube","uStep","uEps","uIters","uCamDist","uExposure","uGlowGain","uPow","uDrift","uColorFreq","uHue","uWarmth","uHueRot","uBase","uCoef","uDrag","uAgit","uAgitWarm","uAgitDef","uTear","uMaskMode"]) {
+  U[name] = gl.getUniformLocation(program, name);
+}
+
+/* ---------------- 控制面板 ---------------- */
+
+const ctrlsBox = document.getElementById("ctrls");
+const sliders = {};
+
+let lastGroup = null;
+for (const p of PARAMS) {
+  if (p.group !== lastGroup) {
+    lastGroup = p.group;
+    const sect = document.createElement("div");
+    sect.className = "sect";
+    sect.textContent = p.group;
+    ctrlsBox.append(sect);
+  }
+  const wrap = document.createElement("div");
+  wrap.className = "ctrl";
+  const row = document.createElement("div");
+  row.className = "row";
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = p.label;
+  const val = document.createElement("span");
+  val.className = "val";
+  row.append(name, val);
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = p.min; input.max = p.max; input.step = p.step; input.value = p.value;
+
+  const refresh = () => { val.textContent = p.int ? String(Math.round(p.value)) : p.value.toFixed(3).replace(/\.?0+$/, "") || "0"; };
+  input.addEventListener("input", () => {
+    p.value = parseFloat(input.value);
+    refresh();
+    saveParams();
+  });
+  p._refresh = () => { input.value = p.value; refresh(); };
+  p._refresh();
+
+  wrap.append(row, input);
+  ctrlsBox.append(wrap);
+  sliders[p.key] = input;
+}
+
+/* ---------------- 状态与交互 ---------------- */
+
+let paused = false;
+let simTime = 0;          // 受 speed 缩放的时间累加器
+let dragAngle = 0;        // 鼠标拖拽累计的附加旋转
+let dragging = false, lastX = 0, lastY = 0;
+
+const btnPause = document.getElementById("btn-pause");
+const btnReset = document.getElementById("btn-reset");
+const btnHide  = document.getElementById("btn-hide");
+const panel    = document.getElementById("panel");
+const toggleBtn = document.getElementById("toggle-btn");
+
+function setPaused(v) {
+  paused = v;
+  btnPause.textContent = paused ? "▶ 播放" : "⏸ 暂停";
+}
+btnPause.addEventListener("click", () => setPaused(!paused));
+
+btnReset.addEventListener("click", () => {
+  for (const p of PARAMS) { p.value = p.def; p._refresh(); }
+  dragAngle = 0;
+  saveParams();
+});
+
+/* ------- 提示气泡 ------- */
+const toastEl = document.createElement("div");
+toastEl.id = "toast";
+document.body.append(toastEl);
+let toastTimer = null;
+function toast(msg, ms = 2600) {
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), ms);
+}
+
+/* ------- 复制链接 / 导入 / 随机 ------- */
+document.getElementById("btn-link").addEventListener("click", async () => {
+  const url = currentParamUrl();
+  let ok = false;
+  try { await navigator.clipboard.writeText(url); ok = true; } catch (e) {}
+  if (!ok) {
+    const ta = document.createElement("textarea");
+    ta.value = url; document.body.append(ta); ta.select();
+    try { ok = document.execCommand("copy"); } catch (e) {}
+    ta.remove();
+  }
+  toast(ok ? "链接已复制 · 收藏或发给别人都能还原这个画面" : "复制失败，请手动复制：\n" + url, 5000);
+});
+
+document.getElementById("btn-import").addEventListener("click", () => {
+  const s = prompt("粘贴参数链接（#p=…）或参数 JSON：");
+  if (!s) return;
+  let o = null;
+  const m = s.match(/#p=([A-Za-z0-9\-_]+)/);
+  try { o = m ? decodeParams(m[1]) : JSON.parse(s); } catch (e) {}
+  if (!o || typeof o !== "object") { toast("无法解析，请检查粘贴内容", 3200); return; }
+  applyParamValues(o);
+  saveParams();
+  toast("已导入 ✓");
+});
+
+document.getElementById("btn-dice").addEventListener("click", () => {
+  for (const p of PARAMS) {
+    if (p.key === "speed") continue; // 不打乱用户习惯的节奏
+    const raw = p.min + Math.random() * (p.max - p.min);
+    const snapped = Math.round(raw / p.step) * p.step;
+    p.value = Math.min(p.max, Math.max(p.min, +snapped.toFixed(4)));
+  }
+  for (const p of PARAMS) p._refresh();
+  saveParams();
+  toast("🎲 已随机 · 不喜欢就再掷一次或按 R 还原");
+});
+
+/* ------- 预设切换 ------- */
+document.getElementById("btn-preset-mine").addEventListener("click", () => {
+  applyParamValues(MY_PRESET);
+  saveParams();
+  toast("已恢复「我的定稿」🎨");
+});
+document.getElementById("btn-preset-orig").addEventListener("click", () => {
+  applyParamValues(ORIG_PRESET);
+  saveParams();
+  toast("已恢复「原版」🧊");
+});
+
+/* ------- PNG 快照：先同步重画一帧再导出，绕过缓冲区失效问题 ------- */
+document.getElementById("btn-snap").addEventListener("click", () => {
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  canvas.toBlob((blob) => {
+    if (!blob) { toast("截图失败 😿"); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "glass-pretzel-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+    toast("已保存截图 📷");
+  }, "image/png");
+});
+
+function setPanelHidden(hidden) {
+  panel.classList.toggle("hidden", hidden);
+  toggleBtn.classList.toggle("show", hidden);
+}
+btnHide.addEventListener("click", () => setPanelHidden(true));
+toggleBtn.addEventListener("click", () => setPanelHidden(false));
+
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { e.preventDefault(); setPaused(!paused); }
+  else if (e.key === "h" || e.key === "H") setPanelHidden(!panel.classList.contains("hidden"));
+  else if (e.key === "r" || e.key === "R") btnReset.click();
+});
+
+canvas.addEventListener("pointerdown", (e) => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvas.classList.add("dragging");
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", (e) => {
+  if (!dragging) return;
+  dragAngle += (e.clientX - lastX) * 0.008;
+  lastX = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener("pointerup", () => { dragging = false; canvas.classList.remove("dragging"); });
+canvas.addEventListener("pointercancel", () => { dragging = false; canvas.classList.remove("dragging"); });
+
+// 滚轮缩放：映射到相机距离滑块
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const p = P.camDist;
+  p.value = Math.min(p.max, Math.max(p.min, p.value * Math.exp(e.deltaY * 0.0012)));
+  p._refresh();
+  saveParams();
+}, { passive: false });
+
+// 显卡上下文丢失时给出提示，恢复后自动重载
+canvas.addEventListener("webglcontextlost", (e) => {
+  e.preventDefault();
+  errBox.style.display = "block";
+  errBox.textContent = "显卡上下文丢失，恢复中…";
+});
+canvas.addEventListener("webglcontextrestored", () => location.reload());
+
+/* ---------------- 尺寸自适应 ---------------- */
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2) * P.renderScale.value;
+  const w = Math.round(canvas.clientWidth * dpr);
+  const h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    gl.viewport(0, 0, w, h);
+  }
+}
+window.addEventListener("resize", resize);
+
+/* ---------------- 鼠标互动：触碰掩码 + 激烈度包络 ---------------- */
+
+// 64×36 迷你 FBO：每帧用同一 shader 渲一张"物体能量掩码"，
+// 回读鼠标处 3×3 像素判定是否碰到物体 —— 判定天然跟随全部滑块参数。
+const MASK_W = 64, MASK_H = 36;
+const maskTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, maskTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, MASK_W, MASK_H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+const maskFbo = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, maskFbo);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, maskTex, 0);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+const maskBuf = new Uint8Array(3 * 3 * 4);
+let mouseX = -1, mouseY = -1, mouseIn = false;
+let velSmooth = 0, agit = 0, lastHit = 0, maskTick = 0;
+let lastMX = null, lastMY = null;
+
+canvas.addEventListener("pointermove", (e) => {
+  mouseIn = true; mouseX = e.clientX; mouseY = e.clientY;
+});
+canvas.addEventListener("pointerleave", () => { mouseIn = false; lastMX = lastMY = null; });
+window.addEventListener("blur", () => { velSmooth = 0; });
+
+/* ---------------- 渲染循环 ---------------- */
+
+const fpsEl = document.getElementById("fps");
+let lastT = performance.now();
+let fpsAccum = 0, fpsFrames = 0;
+
+function frame(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.1);
+  lastT = now;
+
+  if (!paused) simTime += dt * P.speed.value;
+
+  /* ---- 鼠标速度（EMA 平滑，px/s → 0..1）---- */
+  let speedNorm = 0;
+  if (mouseIn && mouseX >= 0) {
+    if (lastMX !== null) {
+      const v = Math.hypot(mouseX - lastMX, mouseY - lastMY) / Math.max(dt, 1e-4);
+      velSmooth += (v - velSmooth) * (1 - Math.exp(-dt / 0.12));
+    }
+    lastMX = mouseX; lastMY = mouseY;
+    speedNorm = Math.min(1, Math.max(0, (velSmooth * P.agitSens.value - 150) / 2400));
+  } else {
+    velSmooth *= Math.exp(-dt / 0.2);
+    lastMX = lastMY = null;
+  }
+
+  /* ---- 触碰判定：掩码 pass + 回读鼠标处 3×3（隔帧采样，回读有同步开销）---- */
+  if (mouseIn && mouseX >= 0 && (maskTick++ % 2 === 0)) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, maskFbo);
+    gl.viewport(0, 0, MASK_W, MASK_H);
+    gl.uniform3f(U.iResolution, MASK_W, MASK_H, 1);
+    gl.uniform1i(U.uMaskMode, 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform1i(U.uMaskMode, 0);
+    const fx = Math.min(MASK_W - 2, Math.max(0, Math.round(mouseX / canvas.clientWidth * MASK_W) - 1));
+    const fy = Math.min(MASK_H - 2, Math.max(0, Math.round((1 - mouseY / canvas.clientHeight) * MASK_H) - 1));
+    gl.readPixels(fx, fy, 3, 3, gl.RGBA, gl.UNSIGNED_BYTE, maskBuf);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    lastHit = 0;
+    for (let k = 0; k < maskBuf.length; k += 4) lastHit = Math.max(lastHit, maskBuf[k] / 255);
+  }
+  const hit = (mouseIn && mouseX >= 0) ? lastHit : 0;
+
+  /* ---- 激烈度包络：0.15s 快起，~2s 慢衰 ---- */
+  const target = hit * speedNorm;
+  agit += (target - agit) * (1 - Math.exp(-dt / (target > agit ? 0.05 : 0.7)));
+  if (agit < 0.001) agit = 0;
+
+  /* ---- 主 pass ---- */
+  resize();
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  const a = agit * P.agitPower.value;
+  // 撕裂门控：与 shader 内 smoothstep(0.55, 0.95, a) 一致
+  let gate = Math.min(1, Math.max(0, (a - 0.55) / 0.4));
+  gate = gate * gate * (3 - 2 * gate);
+  const tear = P.agitTear.value * gate;
+  gl.uniform3f(U.iResolution, canvas.width, canvas.height, 1);
+  gl.uniform1f(U.iTime, simTime);
+  gl.uniform1f(U.uTwist, P.twist.value);
+  gl.uniform1f(U.uRadius, P.radius.value);
+  gl.uniform1f(U.uGap, P.gap.value);
+  gl.uniform1f(U.uGapOff, P.gapOff.value);
+  gl.uniform1f(U.uStretch, P.stretch.value);
+  gl.uniform1f(U.uWobble, P.wobble.value);
+  gl.uniform1f(U.uTube, P.tube.value);
+  gl.uniform1f(U.uStep, P.step.value);
+  gl.uniform1i(U.uIters, Math.round(P.iters.value));
+  gl.uniform1f(U.uCamDist, P.camDist.value * (1 - 0.04 * tear));   // 撕裂时镜头轻微呼吸
+  gl.uniform1f(U.uExposure, P.exposure.value * (1 + 0.35 * a + 0.12 * tear));
+  gl.uniform1f(U.uGlowGain, P.glowGain.value + 0.8 * a + 0.25 * tear);
+  gl.uniform1f(U.uPow, P.pow.value);
+  gl.uniform1f(U.uDrift, P.drift.value * (1 + 2.0 * a));
+  gl.uniform1f(U.uColorFreq, P.colorFreq.value);
+  gl.uniform1f(U.uHue, P.hue.value);
+  gl.uniform1f(U.uWarmth, P.warmth.value);
+  gl.uniform1f(U.uHueRot, P.hueRot.value + P.agitHue.value * a);
+  gl.uniform1f(U.uBase, P.base.value);
+  gl.uniform1f(U.uCoef, P.coef.value);
+  gl.uniform1f(U.uAgit, a);
+  gl.uniform1f(U.uAgitWarm, P.agitWarm.value);
+  gl.uniform1f(U.uAgitDef, P.agitDeform.value);
+  gl.uniform1f(U.uTear, tear);
+  gl.uniform1f(U.uDrag, dragAngle);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  fpsAccum += dt; fpsFrames++;
+  if (fpsAccum >= 0.5) {
+    fpsEl.textContent = Math.round(fpsFrames / fpsAccum) + " fps · " + canvas.width + "×" + canvas.height
+      + (agit > 0.02 ? " · 🔥" + Math.round(agit * 100) + "%" : "");
+    fpsAccum = 0; fpsFrames = 0;
+  }
+
+  requestAnimationFrame(frame);
+}
+
+syncHash();   // 页面加载完立刻把当前参数写进地址栏，直接复制地址栏也不会丢
+resize();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Universe Within — 原始版本(未修改)</title>
+<!--
+  原始版本演示页:与 https://www.shadertoy.com/view/lscczl 完全一致的效果,未做任何修改。
+  着色器: The Universe Within — by Martijn Steinrucken aka BigWings 2018
+  License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported
+  快捷键: 空格 暂停/继续 · F 全屏 · 拖动鼠标产生 3D 视差
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  #hud {
+    position: fixed; left: 12px; bottom: 10px;
+    font: 12px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: rgba(255,255,255,.45); user-select: none; pointer-events: none;
+    text-shadow: 0 1px 2px #000;
+  }
+  #err {
+    position: fixed; inset: 0; margin: 0; padding: 24px; overflow: auto;
+    font: 13px/1.6 Menlo, Consolas, monospace; color: #ff7b72;
+    background: #111; white-space: pre-wrap; display: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">原始版本(未修改)— The Universe Within · BigWings (CC BY-NC-SA 3.0) · 空格 暂停 · F 全屏 · 拖动鼠标产生 3D 视差</div>
+<pre id="err"></pre>
+
+<script id="frag" type="x-shader/x-fragment">// The Universe Within - by Martijn Steinrucken aka BigWings 2018
+// Email:countfrolic@gmail.com Twitter:@The_ArtOfCode
+// License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+
+// After listening to an interview with Michael Pollan on the Joe Rogan
+// podcast I got interested in mystic experiences that people seem to
+// have when using certain psycoactive substances. 
+//
+// For best results, watch fullscreen, with music, in a dark room.
+// 
+// I had an unused 'blockchain effect' lying around and used it as
+// a base for this effect. Uncomment the SIMPLE define to see where
+// this came from.
+// 
+// Use the mouse to get some 3d parallax.
+
+// Music - Terrence McKenna Mashup - Jason Burruss Remixes
+// https://soundcloud.com/jason-burruss-remixes/terrence-mckenna-mashup
+//
+// YouTube video of this effect:
+// https://youtu.be/GAhu4ngQa48
+//
+// YouTube Tutorial for this effect:
+// https://youtu.be/3CycKKJiwis
+
+
+#define S(a, b, t) smoothstep(a, b, t)
+#define NUM_LAYERS 4.
+
+//#define SIMPLE
+
+
+float N21(vec2 p) {
+	vec3 a = fract(vec3(p.xyx) * vec3(213.897, 653.453, 253.098));
+    a += dot(a, a.yzx + 79.76);
+    return fract((a.x + a.y) * a.z);
+}
+
+vec2 GetPos(vec2 id, vec2 offs, float t) {
+    float n = N21(id+offs);
+    float n1 = fract(n*10.);
+    float n2 = fract(n*100.);
+    float a = t+n;
+    return offs + vec2(sin(a*n1), cos(a*n2))*.4;
+}
+
+float GetT(vec2 ro, vec2 rd, vec2 p) {
+	return dot(p-ro, rd); 
+}
+
+float LineDist(vec3 a, vec3 b, vec3 p) {
+	return length(cross(b-a, p-a))/length(p-a);
+}
+
+float df_line( in vec2 a, in vec2 b, in vec2 p)
+{
+    vec2 pa = p - a, ba = b - a;
+	float h = clamp(dot(pa,ba) / dot(ba,ba), 0., 1.);	
+	return length(pa - ba * h);
+}
+
+float line(vec2 a, vec2 b, vec2 uv) {
+    float r1 = .04;
+    float r2 = .01;
+    
+    float d = df_line(a, b, uv);
+    float d2 = length(a-b);
+    float fade = S(1.5, .5, d2);
+    
+    fade += S(.05, .02, abs(d2-.75));
+    return S(r1, r2, d)*fade;
+}
+
+float NetLayer(vec2 st, float n, float t) {
+    vec2 id = floor(st)+n;
+
+    st = fract(st)-.5;
+   
+    vec2 p[9];
+    int i=0;
+    for(float y=-1.; y<=1.; y++) {
+    	for(float x=-1.; x<=1.; x++) {
+            p[i++] = GetPos(id, vec2(x,y), t);
+    	}
+    }
+    
+    float m = 0.;
+    float sparkle = 0.;
+    
+    for(int i=0; i<9; i++) {
+        m += line(p[4], p[i], st);
+
+        float d = length(st-p[i]);
+
+        float s = (.005/(d*d));
+        s *= S(1., .7, d);
+        float pulse = sin((fract(p[i].x)+fract(p[i].y)+t)*5.)*.4+.6;
+        pulse = pow(pulse, 20.);
+
+        s *= pulse;
+        sparkle += s;
+    }
+    
+    m += line(p[1], p[3], st);
+	m += line(p[1], p[5], st);
+    m += line(p[7], p[5], st);
+    m += line(p[7], p[3], st);
+    
+    float sPhase = (sin(t+n)+sin(t*.1))*.25+.5;
+    sPhase += pow(sin(t*.1)*.5+.5, 50.)*5.;
+    m += sparkle*sPhase;//(*.5+.5);
+    
+    return m;
+}
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = (fragCoord-iResolution.xy*.5)/iResolution.y;
+	vec2 M = iMouse.xy/iResolution.xy-.5;
+    
+    float t = iTime*.1;
+    
+    float s = sin(t);
+    float c = cos(t);
+    mat2 rot = mat2(c, -s, s, c);
+    vec2 st = uv*rot;  
+	M *= rot*2.;
+    
+    float m = 0.;
+    for(float i=0.; i<1.; i+=1./NUM_LAYERS) {
+        float z = fract(t+i);
+        float size = mix(15., 1., z);
+        float fade = S(0., .6, z)*S(1., .8, z);
+        
+        m += fade * NetLayer(st*size-M*z, i, iTime);
+    }
+    
+	float fft  = texelFetch( iChannel0, ivec2(.7,0), 0 ).x;
+    float glow = -uv.y*fft*2.;
+   
+    vec3 baseCol = vec3(s, cos(t*.4), -sin(t*.24))*.4+.6;
+    vec3 col = baseCol*m;
+    col += baseCol*glow;
+    
+    #ifdef SIMPLE
+    uv *= 10.;
+    col = vec3(1)*NetLayer(uv, 0., iTime);
+    uv = fract(uv);
+    //if(uv.x>.98 || uv.y>.98) col += 1.;
+    #else
+    col *= 1.-dot(uv,uv);
+    t = mod(iTime, 230.);
+    col *= S(0., 20., t)*S(224., 200., t);
+    #endif
+    
+    fragColor = vec4(col,1);
+}</script>
+
+<script>
+"use strict";
+const canvas = document.getElementById("c");
+const errBox = document.getElementById("err");
+function fail(msg) { errBox.style.display = "block"; errBox.textContent = msg; throw new Error(msg); }
+
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) fail("此浏览器不支持 WebGL2,无法运行该着色器。");
+
+const FRAG_HEADER = `#version 300 es
+precision highp float;
+uniform vec3      iResolution;
+uniform float     iTime;
+uniform float     iTimeDelta;
+uniform float     iFrameRate;
+uniform int       iFrame;
+uniform vec4      iMouse;
+uniform vec4      iDate;
+uniform float     iSampleRate;
+uniform sampler2D iChannel0;
+out vec4 fragColor;
+`;
+const FRAG_FOOTER = `
+void main(){ mainImage(fragColor, gl_FragCoord.xy); }
+`;
+const VERT = `#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+function compile(type, src) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) fail("着色器编译失败:\n" + gl.getShaderInfoLog(sh));
+  return sh;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_HEADER + document.getElementById("frag").text + FRAG_FOOTER));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) fail("着色器链接失败:\n" + gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+// iChannel0:原版的音乐 FFT 输入,本地以 1x1 黑色纹理代替(读数恒 0,与无音频时一致)
+const blackTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, blackTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.uniform1i(gl.getUniformLocation(prog, "iChannel0"), 0);
+
+const U = {};
+for (const n of ["iResolution", "iTime", "iTimeDelta", "iFrameRate", "iFrame", "iMouse", "iDate", "iSampleRate"]) {
+  U[n] = gl.getUniformLocation(prog, n);
+}
+
+const startEpoch = Date.now();
+let paused = false, pausedAt = 0, pauseOffset = 0;
+let frame = 0, lastT = 0;
+const mouse = { x: 0, y: 0, ox: 0, oy: 0, down: false };
+
+function shTime() { return (paused ? pausedAt : Date.now() - startEpoch - pauseOffset * 1000) / 1000; }
+function toShaderXY(e) {
+  const dpr = window.devicePixelRatio || 1;
+  return [e.clientX * dpr, (canvas.clientHeight - e.clientY) * dpr];
+}
+canvas.addEventListener("mousedown", e => {
+  const [x, y] = toShaderXY(e);
+  Object.assign(mouse, { x, y, ox: x, oy: y, down: true });
+});
+canvas.addEventListener("mousemove", e => {
+  if (e.buttons) { const [x, y] = toShaderXY(e); mouse.x = x; mouse.y = y; }
+});
+window.addEventListener("mouseup", () => { mouse.down = false; });
+
+window.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!paused) { paused = true; pausedAt = Date.now(); }
+    else { paused = false; pauseOffset += (Date.now() - pausedAt) / 1000; }
+  } else if (e.code === "KeyF") {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+  }
+});
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+}
+
+const startDate = new Date();
+function render() {
+  resize();
+  const t = shTime();
+  const dt = frame === 0 ? 0 : Math.min(t - lastT, 1 / 15);
+  gl.uniform3f(U.iResolution, canvas.width, canvas.height, 1);
+  gl.uniform1f(U.iTime, t);
+  gl.uniform1f(U.iTimeDelta, dt);
+  gl.uniform1f(U.iFrameRate, dt > 0 ? 1 / dt : 0);
+  gl.uniform1i(U.iFrame, frame);
+  gl.uniform4f(U.iMouse,
+    mouse.x, mouse.y,
+    mouse.down ? mouse.ox : -mouse.ox,
+    mouse.down ? mouse.oy : -mouse.oy);
+  gl.uniform4f(U.iDate, startDate.getFullYear(), startDate.getMonth() + 1, startDate.getDate(),
+    startDate.getHours() * 3600 + startDate.getMinutes() * 60 + startDate.getSeconds());
+  gl.uniform1f(U.iSampleRate, 44100);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  frame++; lastT = t;
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

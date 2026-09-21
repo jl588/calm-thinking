@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Universe Within — 本地复刻 (Shadertoy lscczl)</title>
+<!--
+  本页是对 https://www.shadertoy.com/view/lscczl 的本地复刻,并加入了参数调节面板。
+  着色器: The Universe Within — by Martijn Steinrucken aka BigWings 2018
+  License: Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported
+           https://creativecommons.org/licenses/by-nc-sa/3.0/
+  原作者主页: https://www.shadertoy.com/user/BigWings
+
+  快捷键: 空格 暂停/继续 · R 重置时间 · F 全屏 · H 显示/隐藏参数面板
+  交互:   点击线条 → 该处线段聚成随机形象,鼠标挪开恢复;
+          底部聊天框输入情绪词(开心/兴奋/平静/悲伤/愤怒/恐惧/爱)→
+          线条变色、改变亮度与旋转速度,并自动在画面中央聚成对应形态,
+          输入「恢复」清除。所有参数默认值 = 原作效果;滑杆调节自动保存。
+  原版 iChannel0 绑定背景音乐(FFT);本地无音频时读数为 0,与 Shadertoy
+  无音频输入时的行为一致,"底部辉光"滑杆可手动模拟该项。
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  #hud {
+    position: fixed; left: 12px; bottom: 10px;
+    font: 12px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: rgba(255,255,255,.45); user-select: none; pointer-events: none;
+    text-shadow: 0 1px 2px #000;
+  }
+  #err {
+    position: fixed; inset: 0; margin: 0; padding: 24px; overflow: auto;
+    font: 13px/1.6 Menlo, Consolas, monospace; color: #ff7b72;
+    background: #111; white-space: pre-wrap; display: none; z-index: 99;
+  }
+
+  /* —— 参数面板 —— */
+  #panelToggle {
+    position: fixed; top: 12px; right: 12px; z-index: 20;
+    background: rgba(10,10,14,.7); color: #ddd;
+    border: 1px solid rgba(255,255,255,.15); border-radius: 8px;
+    font: 12px -apple-system, "Helvetica Neue", Arial, sans-serif;
+    padding: 6px 12px; cursor: pointer; backdrop-filter: blur(8px);
+  }
+  #panelToggle:hover { background: rgba(40,40,50,.8); }
+  #panel {
+    position: fixed; top: 46px; right: 12px; z-index: 20; width: 252px;
+    max-height: calc(100vh - 70px); overflow-y: auto;
+    background: rgba(10,10,14,.78); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 12px;
+    color: #ddd; font: 12px/1.4 -apple-system, "Helvetica Neue", Arial, sans-serif;
+    padding: 10px 14px 12px; user-select: none;
+  }
+  #panel.hidden { display: none; }
+  #panelHead {
+    display: flex; justify-content: space-between; align-items: center;
+    font-weight: 600; font-size: 13px; padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 4px;
+  }
+  #resetBtn {
+    background: rgba(255,255,255,.08); color: #cdd;
+    border: 1px solid rgba(255,255,255,.15); border-radius: 6px;
+    font-size: 11px; padding: 3px 8px; cursor: pointer;
+  }
+  #resetBtn:hover { background: rgba(255,255,255,.18); }
+  .row { margin: 7px 0 2px; }
+  .row .lab {
+    display: flex; justify-content: space-between; margin-bottom: 2px;
+    color: #cfd3dc; cursor: pointer;
+  }
+  .row .lab .val { color: #9fdc7f; font-variant-numeric: tabular-nums; }
+  .row input[type=range] {
+    width: 100%; margin: 0; accent-color: #b8d96a; height: 18px; cursor: pointer;
+  }
+  .row .lab:hover .val { text-decoration: underline dotted; }
+
+  /* —— 情绪聊天框 —— */
+  #chat {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: 34px;
+    width: min(500px, 92vw); z-index: 15;
+    font: 13px/1.5 -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+  #chatLog {
+    max-height: 158px; overflow-y: auto; margin-bottom: 8px;
+    display: flex; flex-direction: column; gap: 6px;
+    scrollbar-width: none;
+  }
+  #chatLog:empty { display: none; }
+  .msg { max-width: 80%; padding: 6px 13px; border-radius: 15px; }
+  .msg.user {
+    align-self: flex-end; color: #fff;
+    background: rgba(110,150,70,.85); border-bottom-right-radius: 4px;
+  }
+  .msg.sys {
+    align-self: flex-start; color: #d4dae4;
+    background: rgba(24,28,38,.85); border: 1px solid rgba(255,255,255,.12);
+    border-bottom-left-radius: 4px;
+  }
+  #chatRow { display: flex; gap: 8px; }
+  #chatIn {
+    flex: 1; background: rgba(10,12,16,.82); color: #eee;
+    border: 1px solid rgba(255,255,255,.18); border-radius: 21px;
+    padding: 9px 17px; outline: none; backdrop-filter: blur(10px);
+    font-size: 13px;
+  }
+  #chatIn:focus { border-color: rgba(185,220,125,.65); }
+  #chatIn::placeholder { color: rgba(255,255,255,.35); }
+  #chatSend {
+    background: rgba(115,165,70,.85); color: #fff; border: none;
+    border-radius: 21px; padding: 0 18px; cursor: pointer; font-size: 13px;
+  }
+  #chatSend:hover { background: rgba(135,185,85,.95); }
+  #bgmBtn {
+    background: rgba(70,110,150,.85); color: #fff; border: none;
+    border-radius: 21px; padding: 0 13px; cursor: pointer; font-size: 14px;
+  }
+  #bgmBtn:hover { background: rgba(90,135,175,.95); }
+  #bgmBtn.on { background: rgba(60,130,170,.95); box-shadow: 0 0 8px rgba(90,170,220,.8); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">The Universe Within — BigWings (CC BY-NC-SA 3.0) · 空格 暂停 · R 重置 · F 全屏 · H 参数面板 · 粒子随鼠标流动 · 点击线条聚形 · 聊天框输入情绪变换形态</div>
+<button id="panelToggle">⚙ 参数 (H)</button>
+<div id="panel">
+  <div id="panelHead"><span>效果参数</span><button id="resetBtn">全部重置</button></div>
+  <div id="sliders"></div>
+</div>
+<div id="chat">
+  <div id="chatLog"></div>
+  <div id="chatRow">
+    <input id="chatIn" type="text" autocomplete="off"
+      placeholder="输入情绪试试:开心 / 兴奋 / 平静 / 悲伤 / 愤怒 / 恐惧 / 爱(「恢复」清除)">
+    <button id="bgmBtn" title="冥想 BGM:点击播放内置冥想音(驱动涟漪律动);也可把音频文件拖入页面替换">🎵</button>
+    <button id="chatSend">发送</button>
+  </div>
+</div>
+<input id="bgmFile" type="file" accept="audio/*" style="display:none">
+<pre id="err"></pre>
+
+<script id="frag" type="x-shader/x-fragment">// The Universe Within - by Martijn Steinrucken aka BigWings 2018
+// Email:countfrolic@gmail.com Twitter:@The_ArtOfCode
+// License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
+//
+// 本地复刻版:把原作中写死的常量改成了 uniform,便于用滑杆实时调节。
+// 所有 uXxx 默认值 = 原作数值,默认渲染与原版完全一致。
+// (带 [调] 注释的行为被参数化的位置)
+
+// —— 本地可调参数(默认值 = 原作效果)——
+uniform float uTimeScale;   // [调] 动画速度倍率(原作隐含 1)
+uniform float uNumLayers;   // [调] 网络层数(原作 NUM_LAYERS 4.)
+uniform float uLineWidth;   // [调] 线条粗细倍率(原作 1)
+uniform float uSparkle;     // [调] 节点星光强度(原作 1)
+uniform float uPulseSharp;  // [调] 节点闪烁锐度(原作 20)
+uniform float uParallax;    // [调] 鼠标视差强度(原作 2)
+uniform float uGlow;        // [调] 底部辉光(原作由音乐 FFT 驱动)
+uniform float uHue;         // [调] 色相偏移 0-1(原作 0)
+uniform float uBrightness;  // [调] 亮度倍率(原作 1)
+uniform float uVignette;    // [调] 暗角强度(原作 1)
+
+// —— 点击聚形交互 ——
+uniform vec2  uClick;       // 点击点的屏幕 uv
+uniform float uMorphAmt;    // 聚形强度 0-1(缓动)
+uniform vec4  uShapeA;      // 形象谐波振幅 a2..a5
+uniform vec4  uShapeB;      // 形象谐波相位/参数 p2..p5
+uniform float uShapeMode;   // 形象模式 0 谐波 1 心形 2 星形 3 花瓣 4 多边形
+uniform float uParticleMix; // 粒子/线条混合(1 = 纯粒子)
+
+// —— 情绪系统(聊天框驱动)——
+uniform vec3  uEmoTint;     // 情绪色调
+uniform float uEmoMix;      // 情绪色彩混合度 0-1
+uniform float uEmoBright;   // 情绪亮度倍率(可脉动)
+uniform float uSpinScale;   // 旋转速度倍率(默认 1 = 原作)
+
+vec3 hueShift(vec3 col, float h) {
+    const vec3 k = vec3(0.57735);
+    float a = h*6.28318530718;
+    return col*cos(a) + cross(k, col)*sin(a) + k*dot(k, col)*(1.-cos(a));
+}
+
+// 形象轮廓:极坐标半径。5 种模式,情绪触发时随机挑选并随机化参数
+float shapeR(float ang) {
+    float a = ang + iTime*0.35;   // 形象缓慢自转,有生命感
+    if (uShapeMode < 0.5) {          // 0 谐波 blob
+        float r = 1.
+            + uShapeA.x*sin(2.*a + uShapeB.x)
+            + uShapeA.y*sin(3.*a + uShapeB.y)
+            + uShapeA.z*sin(4.*a + uShapeB.z)
+            + uShapeA.w*sin(5.*a + uShapeB.w);
+        return max(r, 0.25)*0.42;
+    }
+    if (uShapeMode < 1.5) {          // 1 心形
+        float x = -sin(ang);         // 圆瓣朝上、尖朝下
+        return (x*sqrt(abs(cos(ang)))/(x+1.4) - 2.*x + 2.)*0.42;
+    }
+    if (uShapeMode < 2.5) {          // 2 星形芒
+        return 0.32 + 0.68*pow(abs(sin(a*uShapeB.x)), 1. + uShapeA.x*3.);
+    }
+    if (uShapeMode < 3.5) {          // 3 玫瑰花瓣
+        return 0.55 + 0.45*cos(a*uShapeB.x + uShapeB.y);
+    }
+    if (uShapeMode > 4.5) return 0.6;    // 5 涟漪:线轮廓取平均圆,一圈圈扩散由粒子呈现
+    float n = max(uShapeB.x, 3.);    // 4 多边形
+    return 0.72 / cos(mod(a, 6.2831853/n) - 3.14159265/n);
+}
+
+// After listening to an interview with Michael Pollan on the Joe Rogan
+// podcast I got interested in mystic experiences that people seem to
+// have when using certain psycoactive substances. 
+//
+// For best results, watch fullscreen, with music, in a dark room.
+// 
+// I had an unused 'blockchain effect' lying around and used it as
+// a base for this effect. Uncomment the SIMPLE define to see where
+// this came from.
+// 
+// Use the mouse to get some 3d parallax.
+
+// Music - Terrence McKenna Mashup - Jason Burruss Remixes
+// https://soundcloud.com/jason-burruss-remixes/terrence-mckenna-mashup
+//
+// YouTube video of this effect:
+// https://youtu.be/GAhu4ngQa48
+//
+// YouTube Tutorial for this effect:
+// https://youtu.be/3CycKKJiwis
+
+
+#define S(a, b, t) smoothstep(a, b, t)
+
+//#define SIMPLE
+
+
+float N21(vec2 p) {
+	vec3 a = fract(vec3(p.xyx) * vec3(213.897, 653.453, 253.098));
+    a += dot(a, a.yzx + 79.76);
+    return fract((a.x + a.y) * a.z);
+}
+
+vec2 GetPos(vec2 id, vec2 offs, float t) {
+    float n = N21(id+offs);
+    float n1 = fract(n*10.);
+    float n2 = fract(n*100.);
+    float a = t+n;
+    return offs + vec2(sin(a*n1), cos(a*n2))*.4;
+}
+
+float GetT(vec2 ro, vec2 rd, vec2 p) {
+	return dot(p-ro, rd); 
+}
+
+float LineDist(vec3 a, vec3 b, vec3 p) {
+	return length(cross(b-a, p-a))/length(p-a);
+}
+
+float df_line( in vec2 a, in vec2 b, in vec2 p)
+{
+    vec2 pa = p - a, ba = b - a;
+	float h = clamp(dot(pa,ba) / dot(ba,ba), 0., 1.);	
+	return length(pa - ba * h);
+}
+
+float line(vec2 a, vec2 b, vec2 uv, float reach) {
+    float w = max(uLineWidth, .001);
+    float r1 = .04*w;
+    float r2 = .01*w;
+    
+    float d = df_line(a, b, uv);
+    float d2 = length(a-b);
+    float fade = S(1.5*reach, .5, d2);   // reach:聚形时放宽线长上限,让轮廓连线得以保留
+    
+    fade += S(.05, .02, abs(d2-.75));
+    return S(r1, r2, d)*fade;
+}
+
+float NetLayer(vec2 st, float n, float t, vec2 clickL, float mAmt, float mSize) {
+    vec2 id = floor(st)+n;
+
+    st = fract(st)-.5;
+   
+    vec2 p[9];
+    int i=0;
+    for(float y=-1.; y<=1.; y++) {
+    	for(float x=-1.; x<=1.; x++) {
+            p[i++] = GetPos(id, vec2(x,y), t);
+    	}
+    }
+    
+    // 点击聚形:把点击点附近的节点吸附到随机形象轮廓上,
+    // 连线跟随节点,于是线段组合成形象;远处节点不受影响。
+    // mSize 让形状在屏幕上的大小与层无关(各层共同描画同一轮廓)
+    if (mAmt > 0.001) {
+        float mr = mSize;
+        vec2 cl = fract(clickL) - .5;   // 点击点转换到节点坐标系(以 cell 中心为原点)
+        for(int q=0; q<9; q++) {
+            vec2 dd = p[q] - cl;
+            float ds = length(dd);
+            if (ds > mr*2.2) continue;
+            vec2 dir = dd / max(ds, 1e-4);
+            float rr = mr * shapeR(atan(dd.y, dd.x));
+            float f = mAmt * S(mr*2.0, mr*0.5, ds);
+            p[q] = mix(p[q], cl + dir*rr, f);
+        }
+    }
+    
+    float m = 0.;
+    float sparkle = 0.;
+    float reach = 1. + mAmt*2.5;   // 聚形区域允许更长的连线
+    
+    for(int i=0; i<9; i++) {
+        m += line(p[4], p[i], st, reach);
+
+        float d = length(st-p[i]);
+
+        float s = (.005/(d*d));
+        s *= S(1., .7, d);
+        float pulse = sin((fract(p[i].x)+fract(p[i].y)+t)*5.)*.4+.6;
+        pulse = pow(pulse, uPulseSharp);
+
+        s *= pulse*uSparkle;
+        sparkle += s;
+    }
+    
+    m += line(p[1], p[3], st, reach);
+	m += line(p[1], p[5], st, reach);
+    m += line(p[7], p[5], st, reach);
+    m += line(p[7], p[3], st, reach);
+    
+    float sPhase = (sin(t+n)+sin(t*.1))*.25+.5;
+    sPhase += pow(sin(t*.1)*.5+.5, 50.)*5.;
+    m += sparkle*sPhase;//(*.5+.5);
+    
+    return m;
+}
+
+void mainImage( out vec4 fragColor, in vec2 fragCoord )
+{
+    vec2 uv = (fragCoord-iResolution.xy*.5)/iResolution.y;
+	vec2 M = iMouse.xy/iResolution.xy-.5;
+    
+    float t = iTime*uTimeScale*.1;
+    float ra = t*uSpinScale;   // 旋转角:情绪可加速/减速(默认 1 = 原作)
+    
+    float s = sin(ra);
+    float c = cos(ra);
+    mat2 rot = mat2(c, -s, s, c);
+    vec2 st = uv*rot;  
+	M *= rot*uParallax;
+    
+    float m = 0.;
+    for(float i=0.; i<1.; i+=1./uNumLayers) {
+        float z = fract(t+i);
+        float size = mix(15., 1., z);
+        float fade = S(0., .6, z)*S(1., .8, z);
+        
+        // 把点击点变换到该层的局部坐标,各层在点击处各自聚形(带透视纵深)
+        vec2 clickL = uClick*rot*size - M*z;
+        float mAmt = uMorphAmt * S(1., .35, z);  // 越远的层聚形越弱
+        float net = fade * NetLayer(st*size-M*z, i, iTime, clickL, mAmt, .3*size) * (1. + uMorphAmt*.7);
+        m += net * (1. - uParticleMix);   // 粒子化时线条让位(粒子在独立 pass 绘制)
+    }
+    
+	float fft  = max( texelFetch( iChannel0, ivec2(.7,0), 0 ).x, uGlow );
+    float glow = -uv.y*fft*2.;
+   
+    vec3 baseCol = mix(vec3(s, cos(t*.4), -sin(t*.24))*.4+.6, uEmoTint, uEmoMix);
+    vec3 col = baseCol*m;
+    col += baseCol*glow;
+    
+    #ifdef SIMPLE
+    uv *= 10.;
+    col = vec3(1)*NetLayer(uv, 0., iTime, uClick, uMorphAmt, 3.);
+    uv = fract(uv);
+    //if(uv.x>.98 || uv.y>.98) col += 1.;
+    #else
+    col *= 1.-dot(uv,uv)*uVignette;
+    t = mod(iTime, 230.);
+    col *= S(0., 20., t)*S(224., 200., t);
+    #endif
+    
+    col = hueShift(col*uBrightness*uEmoBright, uHue);
+    fragColor = vec4(col,1);
+}</script>
+
+<script>
+"use strict";
+const canvas = document.getElementById("c");
+const errBox = document.getElementById("err");
+function fail(msg) { errBox.style.display = "block"; errBox.textContent = msg; throw new Error(msg); }
+
+const gl = canvas.getContext("webgl2", { antialias: false, alpha: false });
+if (!gl) fail("此浏览器不支持 WebGL2,无法运行该着色器。");
+
+// Shadertoy 运行时头部:声明全套标准 uniform,未用到的会被编译器剔除
+const FRAG_HEADER = `#version 300 es
+precision highp float;
+uniform vec3      iResolution;
+uniform float     iTime;
+uniform float     iTimeDelta;
+uniform float     iFrameRate;
+uniform int       iFrame;
+uniform float     iChannelTime[4];
+uniform vec3      iChannelResolution[4];
+uniform vec4      iMouse;
+uniform vec4      iDate;
+uniform float     iSampleRate;
+uniform sampler2D iChannel0;
+uniform sampler2D iChannel1;
+uniform sampler2D iChannel2;
+uniform sampler2D iChannel3;
+out vec4 fragColor;
+`;
+
+const FRAG_FOOTER = `
+void main(){ mainImage(fragColor, gl_FragCoord.xy); }
+`;
+
+const VERT = `#version 300 es
+layout(location=0) in vec2 aPos;
+void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+function compile(type, src, quiet) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    const msg = (type === gl.VERTEX_SHADER ? "顶点" : "片段") + "着色器编译失败:\n" + gl.getShaderInfoLog(sh);
+    if (quiet) throw new Error(msg);
+    fail(msg);
+  }
+  return sh;
+}
+
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG_HEADER + document.getElementById("frag").text + FRAG_FOOTER));
+gl.linkProgram(prog);
+if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+  fail("着色器链接失败:\n" + gl.getProgramInfoLog(prog));
+}
+gl.useProgram(prog);
+
+// 全屏三角形
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vb = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vb);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+// iChannel0:原版绑定的音乐 FFT;本地静音复刻为 1x1 黑色纹理(读数恒为 0)
+const blackTex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, blackTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+for (let i = 0; i < 4; i++) {
+  gl.activeTexture(gl.TEXTURE0 + i);
+  gl.bindTexture(gl.TEXTURE_2D, blackTex);
+  gl.uniform1i(gl.getUniformLocation(prog, "iChannel" + i), i);
+}
+
+const U = {};
+for (const n of ["iResolution", "iTime", "iTimeDelta", "iFrameRate", "iFrame", "iMouse", "iDate", "iSampleRate"]) {
+  U[n] = gl.getUniformLocation(prog, n);
+}
+
+// ============ 参数面板 ============
+const PARAMS = [
+  { key: "uTimeScale",  label: "动画速度", min: 0,    max: 5,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uNumLayers",  label: "网络层数", min: 1,    max: 10, step: 1,    def: 4,  fmt: v => "" + v },
+  { key: "uLineWidth",  label: "线条粗细", min: 0,    max: 4,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uSparkle",    label: "星光强度", min: 0,    max: 4,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uPulseSharp", label: "闪烁锐度", min: 4,    max: 60, step: 1,    def: 20, fmt: v => "" + v },
+  { key: "uParallax",   label: "视差强度", min: 0,    max: 6,  step: 0.01, def: 2,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uGlow",       label: "底部辉光", min: 0,    max: 1,  step: 0.01, def: 0,  fmt: v => v.toFixed(2) },
+  { key: "uHue",        label: "色相偏移", min: 0,    max: 1,  step: 0.005,def: 0,  fmt: v => (v * 360).toFixed(0) + "°" },
+  { key: "uBrightness", label: "亮度",     min: 0,    max: 3,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uVignette",   label: "暗角强度", min: 0,    max: 2,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uParticleMix",  label: "粒子化",   min: 0,    max: 1,  step: 0.01, def: 1,  fmt: v => (v * 100).toFixed(0) + "%" },
+  { key: "uParticleSize", label: "粒子大小", min: 0.3,  max: 4,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+  { key: "uMouseForce",   label: "鼠标斥力", min: 0,    max: 3,  step: 0.01, def: 1,  fmt: v => v.toFixed(2) + "×" },
+];
+
+const state = {};
+const uLoc = {};
+function getLoc(key) { if (!(key in uLoc)) uLoc[key] = gl.getUniformLocation(prog, key); return uLoc[key]; }
+
+function loadSaved() {
+  try { return JSON.parse(localStorage.getItem("uw-params") || "{}"); } catch (e) { return {}; }
+}
+function saveState() {
+  try { localStorage.setItem("uw-params", JSON.stringify(state)); } catch (e) {}
+}
+
+const slidersBox = document.getElementById("sliders");
+const rows = {};
+for (const p of PARAMS) {
+  const saved = loadSaved();
+  state[p.key] = (p.key in saved) ? Math.min(p.max, Math.max(p.min, +saved[p.key])) : p.def;
+
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML = `<div class="lab" title="双击恢复默认 ${p.def}"><span>${p.label}</span><span class="val"></span></div>`;
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = p.min; input.max = p.max; input.step = p.step; input.value = state[p.key];
+  row.appendChild(input);
+  slidersBox.appendChild(row);
+  rows[p.key] = { p, input, val: row.querySelector(".val") };
+
+  rows[p.key].val.textContent = p.fmt(state[p.key]);
+  input.addEventListener("input", () => {
+    state[p.key] = +input.value;
+    rows[p.key].val.textContent = p.fmt(state[p.key]);
+    saveState();
+  });
+  row.querySelector(".lab").addEventListener("dblclick", () => setParam(p.key, p.def));
+}
+
+function setParam(key, v) {
+  const r = rows[key];
+  state[key] = v;
+  r.input.value = v;
+  r.val.textContent = r.p.fmt(v);
+  saveState();
+}
+function resetAll() { for (const p of PARAMS) setParam(p.key, p.def); }
+document.getElementById("resetBtn").addEventListener("click", resetAll);
+
+const panel = document.getElementById("panel");
+function togglePanel() { panel.classList.toggle("hidden"); }
+document.getElementById("panelToggle").addEventListener("click", togglePanel);
+
+// ============ 点击拾取 + 聚形 ============
+// 拾取:把整张网络(与主着色器同一套 N21/GetPos/df_line/层变换)渲染到 1x1
+// 离屏帧缓冲,片元里只算「点击点到最近线段的屏幕距离」,精度同 GPU,所见即所点。
+const PICK_SRC = `#version 300 es
+precision highp float;
+uniform vec2  uClick;
+uniform vec2  uRes;
+uniform vec4  uMouseV;
+uniform float uTime;
+uniform float uTimeScale;
+uniform float uNumLayers;
+uniform float uParallax;
+uniform float uSpinScale;
+out vec4 o;
+
+float N21(vec2 p) {
+	vec3 a = fract(vec3(p.xyx) * vec3(213.897, 653.453, 253.098));
+    a += dot(a, a.yzx + 79.76);
+    return fract((a.x + a.y) * a.z);
+}
+vec2 GetPos(vec2 id, vec2 offs, float t) {
+    float n = N21(id+offs);
+    float n1 = fract(n*10.);
+    float n2 = fract(n*100.);
+    float a = t+n;
+    return offs + vec2(sin(a*n1), cos(a*n2))*.4;
+}
+float df_line( in vec2 a, in vec2 b, in vec2 p) {
+    vec2 pa = p - a, ba = b - a;
+	float h = clamp(dot(pa,ba) / dot(ba,ba), 0., 1.);
+	return length(pa - ba * h);
+}
+void main() {
+    float best = 1.;
+    float t = uTime*uTimeScale*.1;
+    float ra = t*uSpinScale;
+    float s = sin(ra), c = cos(ra);
+    mat2 rot = mat2(c,-s,s,c);
+    vec2 stR = uClick*rot;
+    vec2 M = uMouseV.xy/uRes - .5;
+    M *= rot*uParallax;
+    for(float i=0.; i<1.; i+=1./uNumLayers) {
+        float z = fract(t+i);
+        float size = mix(15., 1., z);
+        vec2 st0 = stR*size - M*z;
+        vec2 id = floor(st0)+i;
+        vec2 st = fract(st0)-.5;
+        vec2 p[9]; int k=0;
+        for(float y=-1.; y<=1.; y++)
+        for(float x=-1.; x<=1.; x++) p[k++] = GetPos(id, vec2(x,y), uTime);
+        float bm = 1e9;
+        for(int q=0; q<9; q++) bm = min(bm, df_line(p[4], p[q], st));
+        bm = min(bm, df_line(p[1], p[3], st));
+        bm = min(bm, df_line(p[1], p[5], st));
+        bm = min(bm, df_line(p[7], p[5], st));
+        bm = min(bm, df_line(p[7], p[3], st));
+        best = min(best, bm/size);   // 层内距离换算回屏幕 uv 单位
+    }
+    o = vec4(vec3(best), 1.);
+}`;
+
+let pickOK = false;
+let pickProg = null, pickFb = null;
+const pU = {};
+function pickU(n) { if (!(n in pU)) pU[n] = gl.getUniformLocation(pickProg, n); return pU[n]; }
+try {
+  pickProg = gl.createProgram();
+  gl.attachShader(pickProg, compile(gl.VERTEX_SHADER, VERT, true));
+  gl.attachShader(pickProg, compile(gl.FRAGMENT_SHADER, PICK_SRC, true));
+  gl.linkProgram(pickProg);
+  if (!gl.getProgramParameter(pickProg, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pickProg));
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  pickFb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pickFb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  pickOK = true;
+} catch (e) { pickOK = false; }  // 拾取不可用时降级:任何点击都触发聚形
+
+const morph = { amt: 0, target: 0, center: [0, 0], A: [0, 0, 0, 0], B: [0, 0, 0, 0], clickPx: null, source: 'click', mode: 0 };
+
+function toShaderUV(e) {
+  const sx = canvas.width / canvas.clientWidth, sy = canvas.height / canvas.clientHeight;
+  const fx = e.clientX * sx, fy = canvas.height - e.clientY * sy;
+  return [(fx - canvas.width / 2) / canvas.height, (fy - canvas.height / 2) / canvas.height];
+}
+
+function pickLine(uv) {
+  if (!pickOK) return true;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, pickFb);
+  gl.viewport(0, 0, 1, 1);
+  gl.useProgram(pickProg);
+  gl.uniform2f(pickU("uClick"), uv[0], uv[1]);
+  gl.uniform2f(pickU("uRes"), canvas.width, canvas.height);
+  gl.uniform4f(pickU("uMouseV"), mouse.x, mouse.y, 0, 0);
+  gl.uniform1f(pickU("uTime"), shTime());
+  gl.uniform1f(pickU("uTimeScale"), state.uTimeScale);
+  gl.uniform1f(pickU("uNumLayers"), state.uNumLayers);
+  gl.uniform1f(pickU("uParallax"), state.uParallax);
+  gl.uniform1f(pickU("uSpinScale"), emo.spin);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const px = new Uint8Array(4);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  // 恢复主画面状态
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.useProgram(prog);
+  return px[0] / 255 < 0.02;   // 命中阈值:约屏高 2%(≈14px @720p)
+}
+
+function randomShape() {
+  const A = [], B = [];
+  for (let k = 0; k < 4; k++) {
+    A.push(0.10 + Math.random() * 0.32);
+    B.push(Math.random() * Math.PI * 2);
+  }
+  return { A, B };
+}
+
+// ============ 粒子系统 ============
+// 每个粒子绑定到某层某 cell 的一条线段(沿线参数 u),顶点着色器实时重算
+// 线段端点(与画面同一套 N21/GetPos),因此粒子始终"贴"在网络线条上;
+// 聚形时按屏幕空间吸附到形象轮廓,鼠标附近有斥力+涡旋力场。
+const NUM_P = 120000;
+const PART_VS = `#version 300 es
+#define S(a, b, t) smoothstep(a, b, t)
+// 粒子 id 由 attribute 提供(部分实现的 gl_VertexID 在零 attribute 绘制时不递增)
+in float aGid;
+uniform vec2  uRes;
+uniform float uTime;
+uniform float uTimeScale;
+uniform float uNumLayers;
+uniform float uParallax;
+uniform float uSpinScale;
+uniform vec4  iMouse;
+uniform vec2  uMouseUV;
+uniform float uMouseForce;
+uniform vec2  uClick;
+uniform float uMorphAmt;
+uniform float uShapeMode;
+uniform vec4  uShapeA;
+uniform vec4  uShapeB;
+uniform float uEmoMix;
+uniform vec3  uEmoTint;
+uniform float uEmoBright;
+uniform float uParticleSize;
+uniform float uLifeF;
+uniform float uAudioLow;
+uniform float uAudioMid;
+uniform float uAudioHigh;
+out vec3 vColor;
+
+// PCG 整数哈希:float hash 在大 id 时 fract(>1e16) 会塌缩为 0,必须用位运算
+float hash11(uint x) {
+    x ^= x >> 16u;
+    x *= 0x7FEB352Du;
+    x ^= x >> 15u;
+    x *= 0x846CA68Bu;
+    x ^= x >> 16u;
+    return float(x) * (1.0/4294967295.0);
+}
+float N21(vec2 p) {
+	vec3 a = fract(vec3(p.xyx) * vec3(213.897, 653.453, 253.098));
+    a += dot(a, a.yzx + 79.76);
+    return fract((a.x + a.y) * a.z);
+}
+vec2 GetPos(vec2 id, vec2 offs, float t) {
+    float n = N21(id+offs);
+    float n1 = fract(n*10.);
+    float n2 = fract(n*100.);
+    float a = t+n;
+    return offs + vec2(sin(a*n1), cos(a*n2))*.4;
+}
+float shapeR(float ang) {
+    float a = ang + uTime*0.35;
+    if (uShapeMode < 0.5) {
+        float r = 1.
+            + uShapeA.x*sin(2.*a + uShapeB.x)
+            + uShapeA.y*sin(3.*a + uShapeB.y)
+            + uShapeA.z*sin(4.*a + uShapeB.z)
+            + uShapeA.w*sin(5.*a + uShapeB.w);
+        return max(r, 0.25)*0.42;
+    }
+    if (uShapeMode < 1.5) {
+        float x = -sin(ang);
+        return (x*sqrt(abs(cos(ang)))/(x+1.4) - 2.*x + 2.)*0.42;
+    }
+    if (uShapeMode < 2.5) {
+        return 0.32 + 0.68*pow(abs(sin(a*uShapeB.x)), 1. + uShapeA.x*3.);
+    }
+    if (uShapeMode < 3.5) {
+        return 0.55 + 0.45*cos(a*uShapeB.x + uShapeB.y);
+    }
+    float n = max(uShapeB.x, 3.);
+    return 0.72 / cos(mod(a, 6.2831853/n) - 3.14159265/n);
+}
+
+void main() {
+    float gid = aGid;
+    uint seedU = uint(gid + 0.5);
+    float layerRaw = hash11(seedU);
+    vec2  cellXY = vec2(hash11(seedU + 7u), hash11(seedU + 13u)) * 49. - 24.;
+    float lineIdx = floor(hash11(seedU + 29u) * 13.);
+    float uPar = hash11(seedU + 43u);
+    float seed = hash11(seedU + 61u);
+
+    float t = uTime*uTimeScale*.1;
+    float ra = t*uSpinScale;
+    float s = sin(ra), c = cos(ra);
+    mat2 rot = mat2(c,-s,s,c);
+    vec2 M = iMouse.xy/uRes - .5;
+    M *= rot*uParallax;
+
+    float li = floor(layerRaw*uNumLayers)/uNumLayers;
+    // 一半粒子做层重映射(始终贴着最近层,勾出清晰的网络结构),其余跟随原层作背景星尘
+    float z0 = fract(t+li);
+    float doFlip = step(0.5, fract(seed*3.7)) * step(0.5, z0);
+    float li2 = fract(li + 0.5*doFlip);
+    float z = fract(t + li2);
+    float size = mix(15., 1., z);
+    // 无限网格 wrap:把粒子折叠进当前层的可视范围(网格周期性保证无缝)
+    // 屏幕半幅 = uv(±0.89, ±0.5) × size;Rv 超出会令大量粒子越屏
+    vec2 Rv = vec2(0.89, 0.5) * size + 1.5;
+    vec2 id = mod(cellXY + li2 + Rv, Rv*2.) - Rv;
+
+    vec2 p[9];
+    int k=0;
+    for(float y=-1.; y<=1.; y++)
+    for(float x=-1.; x<=1.; x++) p[k++] = GetPos(id, vec2(x,y), uTime);
+
+    int L = int(lineIdx + .5);
+    vec2 A = p[4], B = p[min(L, 8)];   // 先钳制避免数组越界,再按线段类型替换端点
+    if (L == 9)  { A = p[1]; B = p[3]; }
+    if (L == 10) { A = p[1]; B = p[5]; }
+    if (L == 11) { A = p[7]; B = p[5]; }
+    if (L == 12) { A = p[7]; B = p[3]; }
+
+    vec2 lp = mix(A, B, uPar);      // 线上位置(层内,相对 cell)
+    vec2 X = id + lp + M*z;         // 加上 cell 坐标 id,才是层内绝对位置
+    vec2 uv = rot * (X/size);       // 逆变换回屏幕 uv
+
+    // 聚形吸附:~78% 粒子飞向形象轮廓(涟漪模式全部参与,从全屏汇聚成环),其余作背景
+    float rippleGlow = 0.;
+    if (uMorphAmt > 0.001) {
+        bool isRipple = uShapeMode > 4.5;
+        bool candidate = isRipple || fract(seed*7.31) > 0.22;
+        if (candidate) {
+            vec2 dd = uv - uClick;
+            float ds = length(dd);
+            vec2 dir = dd / max(ds, 1e-4);
+            float rr = 0., f = 0., ph = 0.;
+            if (isRipple) {
+                // 涟漪 + 水流:5 组同心环向外延伸;慢速荡开,速度与波纹随音乐轻微律动
+                float ph = fract(uTime*(0.05 + 0.05*uAudioLow) + floor(uPar*5.)*0.2);
+                rr = 0.12 + ph*ph*0.5;
+                // 水流波纹:环半径叠加旋转行波(幅度随低频/音量)
+                float ang = atan(dd.y, dd.x);
+                rr *= 1.0 + (0.03 + 0.06*uAudioLow) * sin(ang*5.0 - uTime*(0.6 + 1.2*uAudioMid) + uPar*5.0);
+                f = uMorphAmt * S(0., .07, ph) * (1. - S(.55, .95, ph));
+                rippleGlow = f * (1.2 - ph) * (0.7 + uAudioHigh*1.2);
+            } else if (ds < 0.8) {
+                rr = 0.3 * shapeR(atan(dd.y, dd.x));
+                f = uMorphAmt * S(0.55, 0.13, ds);
+            }
+            // 切向水流:粒子沿环绕行,外圈转速更快(剪切旋转流),速度随中频律动
+            if (f > 0.001) {
+                float fa = uTime*(0.06 + 0.30*uAudioMid)*ph;
+                float ca = cos(fa), sa = sin(fa);
+                vec2 dirF = vec2(dir.x*ca - dir.y*sa, dir.x*sa + dir.y*ca);
+                vec2 jit = (vec2(N21(vec2(seed, gid)), N21(vec2(seed+7., gid+3.))) - .5) * .06;
+                uv = mix(uv, uClick + dirF*rr + jit, f);
+            }
+        }
+    }
+
+    // 鼠标力场:高斯衰减的斥力 + 切向涡旋,粒子随鼠标流动
+    vec2 dm = uv - uMouseUV;
+    float md2 = dot(dm, dm);
+    float mf = exp(-md2*45.) * uMouseForce;
+    vec2 dmN = dm / max(sqrt(md2), 1e-3);
+    uv += (dmN + vec2(-dmN.y, dmN.x)) * mf * 0.045;
+
+    gl_Position = vec4(uv.x*uRes.y/uRes.x*2., uv.y*2., 0., 1.);
+    float szr = mix(1.6, 4.5, fract(seed*13.7));
+    gl_PointSize = clamp(uParticleSize * szr * uRes.y/720. * (2.5/sqrt(size)), 1., 18.);
+
+    vec3 baseCol = mix(vec3(s, cos(t*.4), -sin(t*.24))*.4+.6, uEmoTint, uEmoMix);
+    float tw = pow(sin(uTime*(1.+fract(seed*5.)*3.) + seed*40.)*.5+.5, 3.);
+    // 层进出的淡入淡出,掩盖层重映射时的位置切换
+    float pf = S(0., .12, z) * (1. - S(.36, .48, z));
+    // 涟漪模式:波前粒子增亮,背景星尘压暗,突出圆环
+    float dim = 1.0 - 0.38*step(4.5, uShapeMode)*uMorphAmt;
+    vColor = baseCol * uEmoBright * (0.85 + 0.65*tw + rippleGlow*2.4) * uLifeF * pf * dim;
+}`;
+
+const PART_FS = `#version 300 es
+precision highp float;
+in vec3 vColor;
+out vec4 o;
+void main() {
+    vec2 q = gl_PointCoord*2.-1.;
+    float r2 = dot(q,q);
+    if (r2 > 1.) discard;
+    o = vec4(vColor * exp(-r2*3.5), 1.);
+}`;
+
+let partProg = null, partVao = null;
+const ppu = {};
+function partU(n) { if (!(n in ppu)) ppu[n] = gl.getUniformLocation(partProg, n); return ppu[n]; }
+try {
+  partProg = gl.createProgram();
+  gl.attachShader(partProg, compile(gl.VERTEX_SHADER, PART_VS, true));
+  gl.attachShader(partProg, compile(gl.FRAGMENT_SHADER, PART_FS, true));
+  gl.linkProgram(partProg);
+  if (!gl.getProgramParameter(partProg, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(partProg));
+  // 每粒子 1 float 的 id buffer(0..N-1),其余属性由 VS 内哈希生成
+  const gids = new Float32Array(NUM_P);
+  for (let i = 0; i < NUM_P; i++) gids[i] = i;
+  partVao = gl.createVertexArray();
+  gl.bindVertexArray(partVao);
+  const pb = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, pb);
+  gl.bufferData(gl.ARRAY_BUFFER, gids, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 1, gl.FLOAT, false, 4, 0);
+  gl.bindVertexArray(null);
+} catch (e) { partProg = null; }
+
+// ============ 情绪聊天 ============
+const EMOTIONS = [
+  { key: 'happy',   words: ['开心', '快乐', '高兴', '喜悦', '愉快', 'happy', 'joy', 'glad'],
+    label: '开心', tint: [1.0, 0.85, 0.35], bright: 1.5, spin: 1.8, shape: 'smooth', pulse: 0.05,
+    desc: '暖金 · 明亮 · 轻快的圆舞' },
+  { key: 'excited', words: ['兴奋', '激动', '亢奋', '热烈', '刺激', 'excited', 'thrilled', 'hype'],
+    label: '兴奋', tint: [1.0, 0.5, 0.15], bright: 1.9, spin: 3.0, shape: 'spiky', pulse: 0.18,
+    desc: '橙红 · 炽亮 · 迸发的尖刺' },
+  { key: 'calm',    words: ['平静', '安宁', '放松', '舒缓', '宁静', '平和', 'calm', 'peace', 'relax'],
+    label: '平静', tint: [0.35, 0.8, 0.9], bright: 0.9, spin: 0.45, shape: 'smooth', pulse: 0,
+    desc: '青蓝 · 柔和 · 一圈圈涟漪向外荡开' },
+  { key: 'sad',     words: ['悲伤', '难过', '伤心', '忧郁', '失落', '沮丧', 'sad', 'blue', 'down'],
+    label: '悲伤', tint: [0.2, 0.3, 0.85], bright: 0.4, spin: 0.2, shape: 'droop', pulse: 0,
+    desc: '深蓝 · 黯淡 · 缓慢低回' },
+  { key: 'angry',   words: ['愤怒', '生气', '恼火', '暴怒', '气愤', 'angry', 'rage', 'mad'],
+    label: '愤怒', tint: [1.0, 0.12, 0.08], bright: 1.9, spin: 3.5, shape: 'spiky', pulse: 0.3,
+    desc: '赤红 · 炽烈 · 剧烈的尖刺' },
+  { key: 'fear',    words: ['恐惧', '害怕', '惊恐', '不安', '慌张', 'fear', 'afraid', 'scared'],
+    label: '恐惧', tint: [0.45, 0.15, 0.62], bright: 0.55, spin: 0.7, shape: 'warp', pulse: 0.4,
+    desc: '幽紫 · 阴暗 · 扭曲颤动' },
+  { key: 'love',    words: ['爱', '爱情', '浪漫', '喜欢', '心动', '恋爱', 'love', 'romance'],
+    label: '爱', tint: [1.0, 0.35, 0.55], bright: 1.35, spin: 1.0, shape: 'heart', heart: true, pulse: 0.1,
+    desc: '玫粉 · 温柔 · 线条聚成心形' },
+];
+const CLEAR_WORDS = ['清除', '恢复', '正常', '关闭', 'reset', 'normal', 'off', 'clear', 'none'];
+
+const emo = {
+  mix: 0, mixT: 0,
+  tint: [1, 1, 1], tintT: [1, 1, 1],
+  bright: 1, brightT: 1,
+  spin: 1, spinT: 1,
+  pulse: 0,
+};
+
+function randPhases() { return [0, 1, 2, 3].map(() => Math.random() * Math.PI * 2); }
+// 每种情绪有一组候选形状模式,每次触发随机挑选并随机化参数 → 抽象随机形态
+function emotionShape(e) {
+  if (e.key === 'love') return { mode: 1, A: [0, 0, 0, 0], B: [0, 0, 0, 0] };
+  if (e.key === 'calm') return { mode: 5, A: [0, 0, 0, 0], B: [0, 0, 0, 0] };   // 涟漪
+  const candidates = { happy: [3, 0], excited: [2, 4], sad: [0], angry: [2], fear: [4, 2] }[e.key] || [0];
+  const mode = candidates[(Math.random() * candidates.length) | 0];
+  const rp = () => Math.random() * Math.PI * 2;
+  if (mode === 2) return { mode, A: [0.2 + Math.random()*0.6, 0, 0, 0], B: [4 + ((Math.random()*6)|0), 0, 0, 0] };
+  if (mode === 3) return { mode, A: [0, 0, 0, 0], B: [3 + ((Math.random()*5)|0), rp(), 0, 0] };
+  if (mode === 4) return { mode, A: [0, 0, 0, 0], B: [3 + ((Math.random()*5)|0), 0, 0, 0] };
+  return { mode: 0, A: [0.1+Math.random()*0.35, 0.1+Math.random()*0.3, 0.1+Math.random()*0.3, 0.08+Math.random()*0.25], B: rp() };
+}
+function applyEmotion(e) {
+  emo.mixT = 1; emo.tintT = e.tint; emo.brightT = e.bright; emo.spinT = e.spin; emo.pulse = e.pulse;
+  morph.center = [0, 0];
+  const sh = emotionShape(e);
+  morph.mode = sh.mode;
+  morph.A = sh.A; morph.B = sh.B;
+  morph.source = 'emo';
+  morph.target = 1;
+  morph.clickPx = null;
+}
+function clearEmotion() {
+  emo.mixT = 0; emo.brightT = 1; emo.spinT = 1; emo.pulse = 0;
+  if (morph.source === 'emo') morph.target = 0;
+}
+
+// —— 聊天 UI ——
+const chatLog = document.getElementById('chatLog');
+const chatIn = document.getElementById('chatIn');
+function addBubble(text, who) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + who;
+  d.textContent = text;
+  chatLog.appendChild(d);
+  while (chatLog.children.length > 6) chatLog.removeChild(chatLog.firstChild);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+function handleChat(raw) {
+  const s = raw.trim().toLowerCase();
+  if (!s) return;
+  addBubble(raw.trim(), 'user');
+  if (CLEAR_WORDS.some(w => s === w || s.includes(w))) {
+    clearEmotion();
+    addBubble('已恢复原始网络形态。', 'sys');
+    return;
+  }
+  for (const e of EMOTIONS) {
+    if (e.words.some(w => s.includes(w))) {
+      applyEmotion(e);
+      addBubble(`已感受「${e.label}」→ ${e.desc}`, 'sys');
+      return;
+    }
+  }
+  addBubble('没听懂这个情绪…试试:开心 / 兴奋 / 平静 / 悲伤 / 愤怒 / 恐惧 / 爱,或输入「恢复」清除。', 'sys');
+}
+function sendChat() { const v = chatIn.value; chatIn.value = ''; handleChat(v); }
+document.getElementById('chatSend').addEventListener('click', sendChat);
+chatIn.addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); sendChat(); }
+  if (e.key === 'Escape') chatIn.blur();
+  e.stopPropagation();   // 输入时不触发全局快捷键(空格暂停等)
+});
+addBubble('输入一个情绪词,线条会随之变色、变亮变暗、旋转或聚成对应形态。也可以直接点击画面里的线条。', 'sys');
+
+// ============ 冥想 BGM + 音频分析 ============
+// 点击 🎵 播放内置合成的冥想 pad(频率驱动涟漪律动);
+// 把音频文件拖进页面(或点击 🎵 后选择文件)可替换为你自己的音乐。
+const bgm = {
+  ctx: null, analyser: null, bins: null,
+  low: 0, mid: 0, high: 0,          // 平滑后的频段能量 0-1
+  playing: false, synth: null, el: null,
+};
+const bgmBtn = document.getElementById('bgmBtn');
+const bgmFile = document.getElementById('bgmFile');
+
+function audioCtxUp() {
+  if (!bgm.ctx) bgm.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (bgm.ctx.state === 'suspended') bgm.ctx.resume();
+  if (!bgm.analyser) {
+    bgm.analyser = bgm.ctx.createAnalyser();
+    bgm.analyser.fftSize = 512;
+    bgm.analyser.smoothingTimeConstant = 0.8;
+    bgm.bins = new Uint8Array(bgm.analyser.frequencyBinCount);
+    bgm.analyser.connect(bgm.ctx.destination);
+  }
+  return bgm.ctx;
+}
+function stopBGM() {
+  if (bgm.synth) { try { bgm.synth.master.gain.linearRampToValueAtTime(0, bgm.ctx.currentTime + 0.8); } catch(e){} 
+    const s = bgm.synth; bgm.synth = null;
+    setTimeout(() => { try { s.oscs.forEach(o => o.stop()); } catch(e){} }, 1000);
+  }
+  if (bgm.el) { bgm.el.pause(); }
+  bgm.playing = false;
+  bgmBtn.classList.remove('on');
+}
+// 内置合成:五音 pad(D 大七挂留,432Hz 系)+ 慢呼吸 LFO + 低通,风格近似冥想氛围乐
+function startSynthBGM() {
+  const ctx = audioCtxUp();
+  stopBGM();
+  const master = ctx.createGain(); master.gain.value = 0;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 750; lp.Q.value = 0.4;
+  master.connect(lp); lp.connect(bgm.analyser);
+  master.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 4);
+  const freqs = [110, 146.83, 185, 220, 277.18, 329.63];
+  const oscs = [];
+  freqs.forEach((f, i) => {
+    const g = ctx.createGain(); g.gain.value = 0.10 / (1 + i * 0.35);
+    for (const det of [0.997, 1.004]) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * det;
+      o.connect(g); o.start(ctx.currentTime + i * 0.4); oscs.push(o);
+    }
+    // 二次谐波:让频谱延伸到中频,水流切向律动有数据可依
+    const h = ctx.createOscillator(); h.type = 'triangle'; h.frequency.value = f * 2;
+    const hg = ctx.createGain(); hg.gain.value = 0.05 / (1 + i * 0.35);
+    h.connect(hg); hg.connect(g); h.start(ctx.currentTime + i * 0.4); oscs.push(h);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.045 + i * 0.019;
+    const lg = ctx.createGain(); lg.gain.value = g.gain.value * 0.7;
+    lfo.connect(lg); lg.connect(g.gain); lfo.start(ctx.currentTime + i * 0.3); oscs.push(lfo);
+    g.connect(master);
+  });
+  bgm.synth = { master, oscs };
+  bgm.playing = true;
+  bgmBtn.classList.add('on');
+  addBubble('已播放内置冥想音(合成的五音 pad)。想用《Green to Blue》:把你的音频文件直接拖进页面即可,涟漪会跟着它的频率律动。', 'sys');
+}
+function playFileBGM(file) {
+  const ctx = audioCtxUp();
+  stopBGM();
+  const el = new Audio(URL.createObjectURL(file));
+  el.loop = true;
+  const src = ctx.createMediaElementSource(el);
+  src.connect(bgm.analyser);
+  el.play();
+  bgm.el = el;
+  bgm.playing = true;
+  bgmBtn.classList.add('on');
+  addBubble(`正在播放「${file.name.replace(/\.[^.]+$/, '')}」— 涟漪将随它的频率律动。`, 'sys');
+}
+bgmBtn.addEventListener('click', () => {
+  if (bgm.playing) { stopBGM(); addBubble('BGM 已停止。', 'sys'); }
+  else bgmFile.click();
+});
+bgmFile.addEventListener('change', () => { if (bgmFile.files[0]) playFileBGM(bgmFile.files[0]); bgmFile.value = ''; });
+// 拖放音频文件
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f && f.type.startsWith('audio')) playFileBGM(f);
+});
+function updateAudio() {
+  if (bgm.playing && bgm.analyser) {
+    bgm.analyser.getByteFrequencyData(bgm.bins);
+    const avg = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += bgm.bins[i]; return s / ((b - a) * 255); };
+    bgm.low  += (Math.min(1, avg(1, 5)  * 1.6) - bgm.low)  * 0.06;
+    bgm.mid  += (Math.min(1, avg(4, 12) * 1.3) - bgm.mid)  * 0.06;
+    bgm.high += (Math.min(1, avg(12, 40)* 1.8) - bgm.high) * 0.09;
+  } else {
+    bgm.low *= 0.95; bgm.mid *= 0.95; bgm.high *= 0.95;
+  }
+}
+
+// ============ 交互 / 渲染 ============
+const startEpoch = Date.now();
+let paused = false, pausedAt = 0, pauseOffset = 0;   // pauseOffset 累计暂停时长(秒)
+let frame = 0, lastT = 0;
+const mouse = { x: 0, y: 0, ox: 0, oy: 0, down: false };  // Shadertoy 坐标系:y 向上,原点左下
+let mouseUV = [-9, -9];   // 粒子力场中心(屏幕 uv),初始在屏外
+
+function shTime() { return (paused ? pausedAt : Date.now() - startEpoch - pauseOffset * 1000) / 1000; }
+function toShaderXY(e) {
+  const dpr = window.devicePixelRatio || 1;
+  return [e.clientX * dpr, (canvas.clientHeight - e.clientY) * dpr];
+}
+canvas.addEventListener("mousedown", e => {
+  const [x, y] = toShaderXY(e);
+  Object.assign(mouse, { x, y, ox: x, oy: y, down: true });
+  const uv = toShaderUV(e);
+  if (pickLine(uv)) {
+    morph.center = uv;
+    const sh = randomShape();
+    morph.mode = 0;
+    morph.A = sh.A; morph.B = sh.B;
+    morph.source = 'click';
+    morph.target = 1;
+    morph.clickPx = [e.clientX, e.clientY];
+  }
+});
+canvas.addEventListener("mousemove", e => {
+  mouseUV = toShaderUV(e);   // 粒子力场跟随鼠标(无需按键)
+  if (e.buttons) { const [x, y] = toShaderXY(e); mouse.x = x; mouse.y = y; }
+  // 手动点击聚形:鼠标从点击位置挪开超过屏高 7% → 缓动恢复
+  // 情绪聚形(source='emo')不受鼠标影响,由聊天指令清除
+  if (morph.target === 1 && morph.source === 'click' && morph.clickPx) {
+    const dx = e.clientX - morph.clickPx[0], dy = e.clientY - morph.clickPx[1];
+    if (Math.hypot(dx, dy) > canvas.clientHeight * 0.07) {
+      morph.target = 0;
+      morph.clickPx = null;
+    }
+  }
+});
+window.addEventListener("mouseup", () => { mouse.down = false; });
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+window.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    e.preventDefault();
+    if (!paused) { paused = true; pausedAt = Date.now(); }
+    else { paused = false; pauseOffset += (Date.now() - pausedAt) / 1000; }
+  } else if (e.code === "KeyR") {
+    paused = false; pauseOffset = 0; frame = 0; lastT = 0;
+  } else if (e.code === "KeyF") {
+    if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+  } else if (e.code === "KeyH") {
+    togglePanel();
+  }
+});
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; gl.viewport(0, 0, w, h); }
+}
+
+const startDate = new Date();
+function render() {
+  resize();
+  const t = shTime();
+  const dt = frame === 0 ? 0 : Math.min(t - lastT, 1 / 15);
+
+  gl.uniform3f(U.iResolution, canvas.width, canvas.height, 1);
+  gl.uniform1f(U.iTime, t);
+  gl.uniform1f(U.iTimeDelta, dt);
+  gl.uniform1f(U.iFrameRate, dt > 0 ? 1 / dt : 0);
+  gl.uniform1i(U.iFrame, frame);
+  gl.uniform4f(U.iMouse,
+    mouse.x, mouse.y,
+    mouse.down ? mouse.ox : -mouse.ox,
+    mouse.down ? mouse.oy : -mouse.oy);
+  gl.uniform4f(U.iDate, startDate.getFullYear(), startDate.getMonth() + 1, startDate.getDate(),
+    startDate.getHours() * 3600 + startDate.getMinutes() * 60 + startDate.getSeconds());
+  gl.uniform1f(U.iSampleRate, 44100);
+
+  for (const p of PARAMS) gl.uniform1f(getLoc(p.key), state[p.key]);
+
+  updateAudio();
+
+  // 聚形缓动:成形快、消散慢
+  morph.amt += (morph.target - morph.amt) * (morph.target > morph.amt ? 0.14 : 0.06);
+  if (morph.target === 0 && morph.amt < 0.001) morph.amt = 0;
+  gl.uniform2f(getLoc("uClick"), morph.center[0], morph.center[1]);
+  gl.uniform1f(getLoc("uMorphAmt"), morph.amt);
+  gl.uniform4f(getLoc("uShapeA"), morph.A[0], morph.A[1], morph.A[2], morph.A[3]);
+  gl.uniform4f(getLoc("uShapeB"), morph.B[0], morph.B[1], morph.B[2], morph.B[3]);
+  gl.uniform1f(getLoc("uShapeMode"), morph.mode);
+
+  // 情绪参数缓动(色彩/亮度/旋转渐变过渡,亮度带脉动)
+  emo.mix += (emo.mixT - emo.mix) * 0.04;
+  for (let i = 0; i < 3; i++) emo.tint[i] += (emo.tintT[i] - emo.tint[i]) * 0.04;
+  emo.bright += (emo.brightT - emo.bright) * 0.04;
+  emo.spin += (emo.spinT - emo.spin) * 0.04;
+  const pulse = 1 + emo.pulse * Math.sin(t * 6) * 0.35;
+  gl.uniform3f(getLoc("uEmoTint"), emo.tint[0], emo.tint[1], emo.tint[2]);
+  gl.uniform1f(getLoc("uEmoMix"), emo.mix);
+  gl.uniform1f(getLoc("uEmoBright"), emo.bright * pulse);
+  gl.uniform1f(getLoc("uSpinScale"), emo.spin);
+
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  // —— 粒子 pass(additive 叠加)——
+  if (partProg && state.uParticleMix > 0.003) {
+    const lifeT = t % 230;
+    const lifeF = Math.min(lifeT / 20, 1) * (lifeT < 200 ? 1 : Math.max(0, (224 - lifeT) / 24));
+    gl.useProgram(partProg);
+    gl.bindVertexArray(partVao);
+    gl.uniform2f(partU("uRes"), canvas.width, canvas.height);
+    gl.uniform1f(partU("uTime"), t);
+    gl.uniform1f(partU("uTimeScale"), state.uTimeScale);
+    gl.uniform1f(partU("uNumLayers"), state.uNumLayers);
+    gl.uniform1f(partU("uParallax"), state.uParallax);
+    gl.uniform1f(partU("uSpinScale"), emo.spin);
+    gl.uniform4f(partU("iMouse"), mouse.x, mouse.y, 0, 0);
+    gl.uniform2f(partU("uMouseUV"), mouseUV[0], mouseUV[1]);
+    gl.uniform1f(partU("uMouseForce"), state.uMouseForce);
+    gl.uniform2f(partU("uClick"), morph.center[0], morph.center[1]);
+    gl.uniform1f(partU("uMorphAmt"), morph.amt);
+    gl.uniform1f(partU("uShapeMode"), morph.mode);
+    gl.uniform4f(partU("uShapeA"), morph.A[0], morph.A[1], morph.A[2], morph.A[3]);
+    gl.uniform4f(partU("uShapeB"), morph.B[0], morph.B[1], morph.B[2], morph.B[3]);
+    gl.uniform1f(partU("uEmoMix"), emo.mix);
+    gl.uniform3f(partU("uEmoTint"), emo.tint[0], emo.tint[1], emo.tint[2]);
+    gl.uniform1f(partU("uEmoBright"), emo.bright * pulse);
+    gl.uniform1f(partU("uParticleSize"), state.uParticleSize);
+    gl.uniform1f(partU("uLifeF"), lifeF);
+    gl.uniform1f(partU("uAudioLow"), bgm.low);
+    gl.uniform1f(partU("uAudioMid"), bgm.mid);
+    gl.uniform1f(partU("uAudioHigh"), bgm.high);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.drawArrays(gl.POINTS, 0, NUM_P);
+    gl.disable(gl.BLEND);
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
+  }
+
+  frame++; lastT = t;
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
