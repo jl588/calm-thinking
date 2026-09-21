@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>沉思的形状 —— 平静地思考</title>
+<style>
+  :root {
+    --bg: #07090f;
+    --ink: #dfe6f2;
+    --dim: #8b94a8;
+    --serif: "Songti SC", "STSong", "Noto Serif SC", "Source Han Serif SC", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--sans); overflow: hidden; }
+
+  /* ---------- 章节式页面：一屏一章 ---------- */
+  .page {
+    position: fixed; inset: 0; overflow-y: auto; overflow-x: hidden;
+    opacity: 0; visibility: hidden; transform: translateY(26px);
+    transition: opacity .75s ease, transform .75s ease, visibility 0s linear .75s;
+  }
+  .page.cur {
+    opacity: 1; visibility: visible; transform: none;
+    transition: opacity .75s ease, transform .75s ease, visibility 0s;
+  }
+
+  /* ---------- 序（前言）---------- */
+  .pro { display: flex; align-items: center; justify-content: center; }
+  .pro .stars { position: fixed; inset: 0; }
+  .star { position: absolute; border-radius: 50%; background: #cfe0ff; animation: tw 3s ease-in-out infinite; }
+  @keyframes tw { 0%,100% { opacity: .12; } 50% { opacity: .85; } }
+  .lead { position: relative; max-width: 720px; padding: 8vh 28px 12vh; }
+  .lead .eyebrow { text-align: center; font-size: 12px; letter-spacing: .55em; text-indent: .55em; color: var(--dim); margin-bottom: 26px; }
+  .lead h1 {
+    text-align: center; font-family: var(--serif); font-weight: 400;
+    font-size: clamp(40px, 7vw, 76px); letter-spacing: .12em; text-indent: .12em;
+    background: linear-gradient(180deg, #f4f7ff 30%, #9db8ff 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .lead .subtitle {
+    text-align: center; margin: 22px 0 40px; font-family: var(--serif);
+    font-size: clamp(14px, 2vw, 19px); letter-spacing: .5em; text-indent: .5em;
+    color: #9db8ff; opacity: .85;
+  }
+  .lead h3 { font-family: var(--serif); font-weight: 400; font-size: 17px; letter-spacing: .2em; color: #c6d2ea; margin: 30px 0 10px; }
+  .lead p { font-size: 14.5px; line-height: 2.15; color: #aeb7c9; text-align: justify; }
+  .lead .tech { margin-top: 34px; font-size: 11.5px; color: #5d6577; text-align: center; letter-spacing: .06em; }
+
+  /* ---------- 章节：作品全幅铺满，文字浮于其上 ---------- */
+  .chapter::after {
+    content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+    background: linear-gradient(90deg, rgba(7,9,15,.88) 0%, rgba(7,9,15,.5) 32%, rgba(7,9,15,0) 60%);
+  }
+  .chapter::before {
+    content: attr(data-num);
+    position: absolute; top: 1vh; right: 2vw; z-index: 2;
+    font-family: var(--serif); font-size: clamp(140px, 20vw, 280px); line-height: 1;
+    color: var(--ac, #6ea8ff); opacity: .05; pointer-events: none; user-select: none;
+  }
+  .col {
+    position: absolute; left: 3vw; top: 50%; transform: translateY(-50%); z-index: 2;
+    width: min(430px, 44vw);
+  }
+  .step {
+    display: inline-block; font-size: 12px; letter-spacing: .5em; text-indent: .5em;
+    color: var(--ac, #6ea8ff);
+    border: 1px solid color-mix(in srgb, var(--ac, #6ea8ff) 45%, transparent);
+    padding: 7px 18px 7px 24px; border-radius: 999px; margin-bottom: 24px;
+  }
+  .chapter h2 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 4.2vw, 44px); letter-spacing: .1em; margin-bottom: 14px; }
+  .artwork { font-size: 12.5px; color: var(--dim); margin-bottom: 24px; letter-spacing: .05em; }
+  .artwork b { color: var(--ac, #6ea8ff); font-weight: 500; }
+  .desc { font-size: 14px; line-height: 2.15; color: #aeb7c9; text-align: justify; }
+  .try {
+    margin-top: 18px; font-size: 12.5px; line-height: 1.9; color: var(--dim);
+    border-left: 2px solid color-mix(in srgb, var(--ac, #6ea8ff) 55%, transparent); padding-left: 14px;
+  }
+  .try b { color: var(--ink); font-weight: 500; }
+
+  /* ---------- 展台：几乎全屏 ---------- */
+  .stage {
+    position: absolute; inset: 10px; z-index: 0;
+    border-radius: 14px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 30px 90px rgba(0,0,0,.55);
+    background: #04050a;
+  }
+  .stage iframe { width: 100%; height: 100%; border: 0; display: block; pointer-events: none; }
+  .stage.live iframe { pointer-events: auto; }
+  #calm { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+
+  .shield {
+    position: absolute; inset: 0; z-index: 3; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    background:
+      radial-gradient(120% 90% at 50% 110%, rgba(4,6,12,.5), transparent 60%),
+      linear-gradient(180deg, rgba(4,6,12,.28), rgba(4,6,12,.05) 30%, rgba(4,6,12,.05) 70%, rgba(4,6,12,.34));
+  }
+  .shield .enter {
+    font-size: 13.5px; letter-spacing: .28em; text-indent: .28em; color: var(--ink);
+    background: rgba(10,14,24,.72); border: 1px solid color-mix(in srgb, var(--ac, #6ea8ff) 60%, transparent);
+    padding: 13px 30px; border-radius: 999px; backdrop-filter: blur(8px);
+    transition: transform .2s, box-shadow .2s;
+  }
+  .shield:hover .enter { transform: translateY(-2px); box-shadow: 0 8px 30px color-mix(in srgb, var(--ac, #6ea8ff) 30%, transparent); }
+  .shield .note { font-size: 11px; color: var(--dim); letter-spacing: .12em; }
+  .stage.live .shield { display: none; }
+  .exitbtn {
+    position: absolute; right: 14px; bottom: 14px; z-index: 5; display: none;
+    font-size: 12px; letter-spacing: .2em; color: var(--ink);
+    background: rgba(10,14,24,.78); border: 1px solid rgba(255,255,255,.16);
+    padding: 9px 18px; border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px);
+  }
+  .stage.live .exitbtn { display: block; }
+
+  .meta {
+    position: absolute; left: 3vw; bottom: 22px; z-index: 2;
+    font-size: 11.5px; color: #7b8499; letter-spacing: .06em;
+    display: flex; gap: 22px; flex-wrap: wrap; justify-content: flex-start;
+  }
+  .meta a { color: #77809a; text-decoration: none; border-bottom: 1px dotted #3a4152; }
+  .meta a:hover { color: var(--ac, #6ea8ff); }
+
+  /* ---------- 尾 ---------- */
+  .coda { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 24px; }
+  .coda .cycle { font-family: var(--serif); font-size: clamp(20px, 3.4vw, 32px); letter-spacing: .14em; line-height: 2.2; color: #c6d2ea; }
+  .coda .cycle i { font-style: normal; color: #5d6577; margin: 0 10px; font-size: .8em; }
+  .coda .fin { margin-top: 42px; font-size: 12.5px; color: var(--dim); letter-spacing: .35em; }
+  .coda .links { margin-top: 26px; display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+  .coda .links a { font-size: 11.5px; color: #77809a; text-decoration: none; border-bottom: 1px dotted #3a4152; }
+  .coda .links a:hover { color: #cfe0ff; }
+
+  /* ---------- 翻页控制 ---------- */
+  .navbtn {
+    position: fixed; bottom: 26px; z-index: 40; cursor: pointer;
+    font: 13px/1 var(--sans); letter-spacing: .25em; text-indent: .25em; color: var(--ink);
+    background: rgba(10,14,24,.72); border: 1px solid rgba(255,255,255,.16);
+    padding: 13px 26px; border-radius: 999px; backdrop-filter: blur(8px);
+    transition: border-color .2s, transform .2s;
+  }
+  .navbtn:hover { border-color: rgba(157,184,255,.55); transform: translateY(-2px); }
+  #nextbtn { left: 50%; transform: translateX(-50%); }
+  #nextbtn:hover { transform: translateX(-50%) translateY(-2px); }
+  #prevbtn { left: 20px; top: 16px; bottom: auto; display: none; }
+
+  /* ---------- 右侧星路 ---------- */
+  .rail {
+    position: fixed; right: 26px; top: 50%; transform: translateY(-50%); z-index: 30;
+    display: flex; flex-direction: column; align-items: center; gap: 0;
+  }
+  .rail .line { width: 1px; height: 40px; background: rgba(255,255,255,.14); }
+  .rail a {
+    width: 10px; height: 10px; border-radius: 50%; text-decoration: none;
+    border: 1px solid rgba(255,255,255,.3); background: transparent; position: relative;
+    transition: background .3s, box-shadow .3s;
+  }
+  .rail a.on { background: #cfe0ff; box-shadow: 0 0 12px #9db8ff; }
+  .rail a span {
+    position: absolute; right: 22px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; color: var(--dim); letter-spacing: .3em; white-space: nowrap;
+    opacity: 0; transition: opacity .25s;
+  }
+  .rail a:hover span, .rail a.on span { opacity: 1; }
+
+  /* ---------- 页面控制（音乐 / 文字编辑）---------- */
+  .ctrls {
+    position: fixed; top: 16px; right: 20px; z-index: 60;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ctrls .pill {
+    font: 12px/1 var(--sans); letter-spacing: .12em; color: var(--ink);
+    background: rgba(10,14,24,.72); border: 1px solid rgba(255,255,255,.16);
+    padding: 9px 14px; border-radius: 999px; cursor: pointer;
+    backdrop-filter: blur(8px); transition: border-color .2s;
+  }
+  .ctrls .pill:hover { border-color: rgba(157,184,255,.55); }
+  .ctrls input[type=range] { width: 72px; accent-color: #9db8ff; }
+  .ctrls .hidden { display: none; }
+  .editing [data-ed] {
+    outline: 1px dashed rgba(157,184,255,.45); outline-offset: 5px;
+    border-radius: 4px; cursor: text;
+  }
+  .editing [data-ed]:focus { outline-style: solid; outline-color: #9db8ff; }
+
+  @media (max-width: 900px) {
+    .chapter::after {
+      background: linear-gradient(0deg, rgba(7,9,15,.92) 0%, rgba(7,9,15,.6) 42%, rgba(7,9,15,0) 72%);
+    }
+    .col { left: 0; right: 0; top: auto; bottom: 80px; transform: none; width: auto; padding: 0 6vw; }
+    .meta { left: 6vw; }
+  }
+  @media (max-width: 640px) {
+    .ctrls input[type=range] { display: none; }
+    .ctrls { top: 10px; right: 12px; }
+    .rail { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ctrls">
+  <button id="music-btn" class="pill" title="环境音乐：三章各有一段舒缓纯音乐，随章节渐变切换">♪ 音乐 · 关</button>
+  <input type="range" id="vol" min="0" max="100" value="45" title="音量">
+  <button id="edit-btn" class="pill" title="编辑此页所有文字，改动自动保存在本机">✎ 编辑文字</button>
+  <button id="text-reset" class="pill hidden" title="清除本机修改，恢复默认文案">↺ 恢复默认文案</button>
+</div>
+
+<!-- ═══════════ 序 · 前言 ═══════════ -->
+<section class="page pro cur" id="p0">
+  <div class="stars" id="stars"></div>
+  <div class="lead">
+    <div class="eyebrow">三件单文件互动光效 · 一场缓慢的展览</div>
+    <h1>沉思的形状</h1>
+    <div class="subtitle">平 静 地 思 考 · 三 部 曲</div>
+
+    <h3>一 · 为什么是"平静地思考"</h3>
+    <p>思考常被想象成紧皱的眉心与高速的运转。这场展览想给出另一种画面：思考也可以是缓慢的、松弛的，像光落进深水。我们把一次完整的思考拆成三站，交给三件会发光的互动作品——它们不考核你、不打扰你，只是安静地回应你。</p>
+
+    <h3>二 · 三步：吸收，心流，输出</h3>
+    <p>第一章「弥漫」，思考始于接收：一面只说一个词的屏幕，星屑般的涟漪从词心漾开，随着环境音乐的低频轻轻起伏——像宇宙把星尘倾进海里，你只需敞开。第二章「呼吸」，思考在人的身体里流转：一枚会呼吸的玻璃扭结，被你激惹时烧成橙色、掀起涟漪，静止时又慢慢凉回澄蓝——不用力时，波最稳。第三章「结晶」，思考由机器成形：词语落进粒子的脑波里，长成雨、雪、焰火或星系——输出不是思考的结束，是思考第一次被看见的样子。三步首尾相接：机器吐出的星尘，又落回下一场沉思。</p>
+
+    <h3>三 · 最少用力的交互</h3>
+    <p>全部交互遵循同一条原则：动作越急，画面越烈；动作越缓，画面越静。没有目标，没有失败，没有计分。展品回应你，而不是考验你——平静不是奖励，是这里的常态。</p>
+
+    <h3>四 · 光、声、章</h3>
+    <p>每章一件作品、一段原创的环境音乐：音乐由页面实时生成，随章节交叉渐变，像给每章换了一种呼吸。行进是章节式的——一章看完，再进下一章，像翻一本很慢的书；随时可以用右侧的星点直接跳章。</p>
+
+    <p class="tech">三件作品均为单文件 WebGL / Web Audio · 原作署名与许可见各章 · MMXXVI</p>
+  </div>
+</section>
+
+<nav class="rail" id="rail">
+  <a href="#" data-p="0" class="on"><span>序 · 前言</span></a>
+  <div class="line"></div>
+  <a href="#" data-p="1"><span>壹 · 弥漫</span></a>
+  <div class="line"></div>
+  <a href="#" data-p="2"><span>贰 · 呼吸</span></a>
+  <div class="line"></div>
+  <a href="#" data-p="3"><span>叁 · 结晶</span></a>
+  <div class="line"></div>
+  <a href="#" data-p="4"><span>尾 · 循环</span></a>
+</nav>
+
+<button class="navbtn" id="prevbtn">‹ 上一章</button>
+<button class="navbtn" id="nextbtn">开始展览 ↓</button>
+
+<!-- ═══════════ 壹 · 弥漫 ═══════════ -->
+<section class="page chapter" id="p1" data-num="壹" style="--ac:#9db8ff">
+  <div class="stage" id="stage1">
+    <iframe data-src="the-universe-within-interactive/universe-within.html" title="The Universe Within" allow="autoplay"></iframe>
+    <canvas id="calm"></canvas>
+    <div class="shield"><div class="enter">▶&ensp;进入互动</div><div class="note">作品正在实时运行 · 点击后即可交互</div></div>
+    <button class="exitbtn">结束互动 ⌄</button>
+  </div>
+  <div class="col">
+    <div class="step">第 一 步 · 吸 收</div>
+    <h2>弥漫</h2>
+    <div class="artwork">The Universe Within · 互动改编版 — 原作 <b>BigWings</b>（Shadertoy lscczl）· 叠加本展呼吸提示词</div>
+    <p class="desc">
+      十二万粒星尘织成隧道，像一场缓慢落进颅内的星雨。星云之上，一枚呼吸提示词
+      随音乐明灭——吸气，呼气，把节奏慢下来。浩瀚从不要求你回答，
+      它只是安静地把你充满。这一步没有任务：接收，就是全部的功课。
+    </p>
+    <div class="try"><b>试试</b>：进入互动后，在底部输入框写一个情绪词（比如「想念」），看星云如何回应；开启右上角 ♪ 音乐，中央的呼吸提示词会随乐声明灭。</div>
+  </div>
+  <div class="meta">
+    <span>改编 hanjiusi72-eng</span>
+    <a href="https://github.com/hanjiusi72-eng/the-universe-within-interactive" target="_blank">GitHub ↗</a>
+    <a href="the-universe-within-interactive/universe-within.html" target="_blank">新窗口全屏打开 ↗</a>
+  </div>
+</section>
+
+<!-- ═══════════ 贰 · 呼吸 ═══════════ -->
+<section class="page chapter" id="p2" data-num="贰" style="--ac:#ffb36e">
+  <div class="col">
+    <div class="step">第 二 步 · 心 流</div>
+    <h2>呼吸</h2>
+    <div class="artwork">Glass Pretzel 玻璃扭结 · 参数化互动版 — 原作 <b>Jaenam</b>（Shadertoy fcVXDd）</div>
+    <p class="desc">
+      一枚会呼吸的玻璃扭结。快速划过，它烧成橙色、掀起涟漪、光带狂奔；
+      停下手，它在两秒里慢慢凉回澄蓝。心流如是——不用力时，波最稳。
+      你与它之间不需要语言，只需要频率。
+    </p>
+    <div class="try"><b>试试</b>：点击画面进入互动，在环上快速来回划动，然后停手，看它慢慢冷却回蓝。</div>
+  </div>
+  <div class="stage" id="stage2">
+    <iframe data-src="glowing-octo-fishstick/index.html" title="Glass Pretzel"></iframe>
+    <div class="shield"><div class="enter">▶&ensp;进入互动</div><div class="note">作品正在实时运行 · 点击后即可交互</div></div>
+    <button class="exitbtn">结束互动 ⌄</button>
+  </div>
+  <div class="meta">
+    <span>本展作者作品 · jl588</span>
+    <span>CC BY-NC-SA 4.0</span>
+    <a href="https://github.com/jl588/glowing-octo-fishstick" target="_blank">GitHub ↗</a>
+    <a href="https://jl588.github.io/glowing-octo-fishstick/" target="_blank">在线版 ↗</a>
+  </div>
+</section>
+
+<!-- ═══════════ 叁 · 结晶 ═══════════ -->
+<section class="page chapter" id="p3" data-num="叁" style="--ac:#4de3ff">
+  <div class="col">
+    <div class="step">第 三 步 · 输 出</div>
+    <h2>结晶</h2>
+    <div class="artwork">Particle Experiment 7 · AI 脑波版 — 原作 <b>aiekick</b>（Shadertoy MddGWN）</div>
+    <p class="desc">
+      轮到机器替你出神。词语落进电光蓝的脑波节律里，长成雨丝、落雪、焰火或星系；
+      按住拖动，粒子沿着你手的轨迹列队，松手后按寿命散去，再归于场景。
+      输出不是思考的结束——是思考第一次被看见的样子。
+    </p>
+    <div class="try"><b>试试</b>：进入互动后，输入「雨」「星系」或任何词看意象成形；按住鼠标拖动，松手看粒子消散。</div>
+  </div>
+  <div class="stage" id="stage3">
+    <iframe data-src="particle-experiment-7/particle-experiment-7.html" title="Particle Experiment 7"></iframe>
+    <div class="shield"><div class="enter">▶&ensp;进入互动</div><div class="note">作品正在实时运行 · 点击后即可交互</div></div>
+    <button class="exitbtn">结束互动 ⌄</button>
+  </div>
+  <div class="meta">
+    <span>改编 wmy0430</span>
+    <a href="https://github.com/wmy0430/particle-experiment-7" target="_blank">GitHub ↗</a>
+    <a href="particle-experiment-7/particle-experiment-7.html" target="_blank">原作品全屏打开 ↗</a>
+  </div>
+</section>
+
+<!-- ═══════════ 尾 · 循环 ═══════════ -->
+<footer class="page coda" id="p4">
+  <div class="cycle">
+    宇宙把光递给人心<i>·</i>人心把稳度递给机器<i>·</i>机器把意象还给夜空
+  </div>
+  <div class="fin">弥 漫 · 呼 吸 · 结 晶 —— 然 后 循 环</div>
+  <div class="links">
+    <a href="https://github.com/hanjiusi72-eng/the-universe-within-interactive" target="_blank">The Universe Within 互动版</a>
+    <a href="https://github.com/jl588/glowing-octo-fishstick" target="_blank">Glass Pretzel 玻璃扭结</a>
+    <a href="https://github.com/wmy0430/particle-experiment-7" target="_blank">Particle Experiment 7 · AI 脑波版</a>
+  </div>
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- 序章星空 ---------- */
+(() => {
+  const box = document.getElementById("stars");
+  for (let i = 0; i < 110; i++) {
+    const s = document.createElement("div");
+    s.className = "star";
+    const z = Math.random();
+    s.style.cssText =
+      `left:${Math.random()*100}%;top:${Math.random()*100}%;` +
+      `width:${(1+z*2).toFixed(1)}px;height:${(1+z*2).toFixed(1)}px;` +
+      `animation-delay:${(Math.random()*3).toFixed(2)}s;animation-duration:${(2.2+Math.random()*3).toFixed(2)}s;` +
+      `opacity:0;`;
+    box.appendChild(s);
+  }
+})();
+
+/* ---------- 环境音乐（Web Audio 实时生成，随章节渐变）---------- */
+const Music = (() => {
+  let ctx = null, master = null, wet = null, analyser = null;
+  const patchGain = [];
+  let enabled = false, vol = 0.45, cur = 0;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  const SCALE_SEA   = [587.33, 698.46, 783.99, 880.00, 1046.5, 1174.7];
+  const SCALE_CALM  = [293.66, 329.63, 369.99, 440.00, 493.88, 587.33];
+  const SCALE_BLOOM = [349.23, 392.00, 440.00, 523.25, 587.33, 698.46, 783.99, 880.00];
+  let abin = null;
+
+  function mkVerbIR() {
+    const len = Math.floor(ctx.sampleRate * 2.8);
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+    }
+    return buf;
+  }
+  function note(freq, { type = "sine", t = 0, a = 0.5, r = 2.5, v = 0.05, harm = 0, lpf = 0, pg = 0 }) {
+    const t0 = ctx.currentTime + t;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + a);
+    g.gain.setTargetAtTime(0, t0 + a, r / 3);
+    let tail = g;
+    if (lpf) { const f = ctx.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = lpf; g.connect(f); tail = f; }
+    tail.connect(patchGain[pg]); tail.connect(wet);
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    o.connect(g); o.start(t0); o.stop(t0 + a + r * 2.2);
+    if (harm) {
+      const g2 = ctx.createGain();
+      g2.gain.setValueAtTime(0, t0);
+      g2.gain.linearRampToValueAtTime(v * 0.3, t0 + Math.min(a, 0.02));
+      g2.gain.setTargetAtTime(0, t0 + a, r / 4);
+      g2.connect(patchGain[pg]); g2.connect(wet);
+      const o2 = ctx.createOscillator(); o2.frequency.value = freq * harm;
+      o2.connect(g2); o2.start(t0); o2.stop(t0 + a + r * 1.2);
+    }
+  }
+  function drone(pg, freq, v, type = "sine") {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = freq;
+    const g = ctx.createGain(); g.gain.value = v;
+    o.connect(g); g.connect(patchGain[pg]); g.connect(wet); o.start();
+    return o;
+  }
+  function loop(fn, min, max) {
+    const tick = () => { if (enabled) fn(); setTimeout(tick, rnd(min, max) * 1000); };
+    setTimeout(tick, rnd(min, max) * 1000);
+  }
+  function ensure() {
+    if (ctx) return;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+    analyser = ctx.createAnalyser(); analyser.fftSize = 256;
+    abin = new Uint8Array(analyser.frequencyBinCount);
+    master.connect(analyser);
+    const conv = ctx.createConvolver(); conv.buffer = mkVerbIR();
+    wet = ctx.createGain(); wet.gain.value = 0.55; wet.connect(conv); conv.connect(master);
+    for (let i = 0; i < 3; i++) { const g = ctx.createGain(); g.gain.value = 0; g.connect(master); patchGain.push(g); }
+
+    /* 壹 · 弥漫：深空持续音 + 稀疏星光铃 */
+    drone(0, 73.42, 0.055); drone(0, 110.0, 0.038); drone(0, 146.83, 0.014);
+    loop(() => note(pick(SCALE_SEA), { a: 0.9, r: 3.6, v: 0.045, harm: 2.01, pg: 0 }), 2.4, 6);
+
+    /* 贰 · 呼吸：暖和弦垫（16 秒滑移）+ 10 秒呼吸 + 偶发拨弦 */
+    const padOsc = [146.83, 174.61, 220.0].map(f => drone(1, f, 0.028, "triangle"));
+    const chords = [[146.83, 174.61, 220.0], [116.54, 146.83, 174.61]];
+    let ci = 0;
+    setInterval(() => { ci = 1 - ci; padOsc.forEach((o, i) =>
+      o.frequency.setTargetAtTime(chords[ci][i], ctx.currentTime, 5)); }, 16000);
+    const breathe = ctx.createOscillator(); breathe.frequency.value = 1 / 10;
+    const bg = ctx.createGain(); bg.gain.value = 0.014;
+    breathe.connect(bg); bg.connect(patchGain[1].gain); breathe.start();
+    loop(() => note(pick(SCALE_CALM), { type: "triangle", a: 0.012, r: 2.2, v: 0.04, lpf: 1400, pg: 1 }), 4, 8);
+
+    /* 叁 · 结晶：音乐盒上行音簇 + 稀疏低音 */
+    loop(() => {
+      const i = Math.floor(rnd(0, SCALE_BLOOM.length - 3));
+      const n = 2 + Math.floor(Math.random() * 3);
+      for (let k = 0; k < n; k++) note(SCALE_BLOOM[Math.min(i + k, SCALE_BLOOM.length - 1)],
+        { a: 0.006, r: 1.7, v: 0.04, harm: 3.01, t: k * 0.17, pg: 2 });
+    }, 1.3, 2.6);
+    loop(() => note(174.61, { type: "triangle", a: 0.4, r: 3.5, v: 0.04, lpf: 800, pg: 2 }), 9, 15);
+
+    setChapter(cur, true);
+  }
+  function applyVol() {
+    if (!ctx) return;
+    master.gain.setTargetAtTime(enabled ? Math.pow(vol, 1.6) * 0.5 : 0, ctx.currentTime, 0.6);
+  }
+  function setChapter(i, instant) {
+    if (i < 0) return;
+    cur = i;
+    if (!ctx) return;
+    patchGain.forEach((g, j) => g.gain.setTargetAtTime(j === i ? 1 : 0, ctx.currentTime, instant ? 0.1 : 1.8));
+  }
+  return {
+    toggle() { enabled = !enabled; if (enabled) { ensure(); ctx.resume(); } applyVol(); return enabled; },
+    setVol(v) { vol = v; applyVol(); },
+    setChapter,
+    level() {  // 供提示词画面取音乐低频能量（0..1）
+      if (!analyser || !enabled) return null;
+      analyser.getByteFrequencyData(abin);
+      let s = 0; for (let i = 2; i < 26; i++) s += abin[i];
+      return s / 24 / 255;
+    },
+    get state() {
+      return { ctx: !!ctx, running: ctx ? ctx.state : "none", enabled, cur, gains: patchGain.map(g => +g.gain.value.toFixed(2)) };
+    },
+  };
+})();
+
+document.getElementById("music-btn").addEventListener("click", (e) => {
+  e.currentTarget.textContent = Music.toggle() ? "♪ 音乐 · 开" : "♪ 音乐 · 关";
+});
+document.getElementById("vol").addEventListener("input", (e) => Music.setVol(e.target.value / 100));
+
+/* ---------- 壹 · 呼吸提示词叠加层（透明画布浮在星云上，随音乐明灭）---------- */
+const Calm = (() => {
+  const cv = document.getElementById("calm");
+  const g = cv.getContext("2d");
+  const WORDS = ["平静", "吸气", "呼气", "慢下来", "不必用力"];
+  let W = 0, H = 0, dpr = 1;
+  let t = 0, energy = 0.15, lastHalo = 0, wi = 0, wT = 0;
+  const halos = [];
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+  resize();
+
+  function frameInner() {
+    t += 1 / 60;
+    const lv = Music.level();
+    const target = (lv === null) ? (0.20 + 0.14 * (0.5 + 0.5 * Math.sin(t * 0.5))) : Math.min(1, lv * 2.0);
+    energy += (target - energy) * 0.05;
+    g.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H / 2;
+    const fs = Math.min(W, H) * 0.13;
+
+    // 呼吸光环：从词心缓缓漾开
+    if (t - lastHalo > 3.4 - 2.0 * energy) {
+      lastHalo = t;
+      halos.push({ r: fs * 0.55, a: 0.12 + 0.20 * energy, ph: Math.random() * 6.28 });
+    }
+    for (let i = halos.length - 1; i >= 0; i--) {
+      const h = halos[i];
+      h.r += (14 + 40 * energy) / 60; h.a *= 0.994;
+      if (h.a < 0.008 || h.r > Math.max(W, H) * 0.75) { halos.splice(i, 1); continue; }
+      g.beginPath();
+      for (let k = 0; k <= 72; k++) {
+        const ang = (k / 72) * Math.PI * 2;
+        const rr = h.r + 4 * Math.sin(5 * ang + h.ph + t);
+        const x = cx + Math.cos(ang) * rr, y = cy + Math.sin(ang) * rr;
+        k ? g.lineTo(x, y) : g.moveTo(x, y);
+      }
+      g.closePath();
+      g.strokeStyle = `rgba(190,212,255,${h.a.toFixed(3)})`;
+      g.lineWidth = 1 + 1.6 * energy;
+      g.stroke();
+    }
+
+    // 呼吸提示词：约 7 秒换一个，光晕随音乐低频呼吸
+    wT += 1 / 60;
+    const cyc = wT % 7;
+    const fade = Math.min(1, cyc / 1.4, (7 - cyc) / 1.4);
+    if (wT > 7 * (wi + 1) - 0.05 && wi < WORDS.length - 1) wi++;
+    if (wT > 7 * WORDS.length) { wi = 0; wT = 0; }
+    g.save();
+    g.translate(cx, cy);
+    const s = 1 + 0.028 * Math.sin(t * 0.55) + 0.05 * energy;
+    g.scale(s, s);
+    g.font = `500 ${fs}px "Songti SC","STSong","Noto Serif SC",serif`;
+    g.textAlign = "center"; g.textBaseline = "middle";
+    g.shadowColor = "rgba(170,200,255,0.95)";
+    g.shadowBlur = 14 + 48 * energy;
+    g.fillStyle = `rgba(240,246,255,${((0.35 + 0.55 * fade) * (0.75 + 0.25 * energy)).toFixed(3)})`;
+    g.fillText(WORDS[wi], 0, 0);
+    g.restore();
+  }
+  function frame() {
+    window.__calmN = (window.__calmN || 0) + 1;
+    try { frameInner(); }
+    catch (err) { if (!window.__calmErr) window.__calmErr = String((err && err.stack) || err); }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  return { get state() { return { energy: +energy.toFixed(3), halos: halos.length, word: WORDS[wi] }; } };
+})();
+
+/* ---------- 章节式翻页 ---------- */
+const pages = [...document.querySelectorAll(".page")];
+const NEXT_LABELS = ["开始展览 ↓", "下一章 ↓", "下一章 ↓", "看完这章 ↓", "回到前言 ↻"];
+const CH_MUSIC = [0, 0, 1, 2, 2];  // 各页对应的音乐轨
+const railLinks = [...document.querySelectorAll(".rail a")];
+const nextbtn = document.getElementById("nextbtn");
+const prevbtn = document.getElementById("prevbtn");
+let cur = 0, lock = 0;
+
+function showPage(i, instant) {
+  i = Math.max(0, Math.min(pages.length - 1, i));
+  if (i === cur && !instant) return;
+  cur = i;
+  pages.forEach((p, k) => p.classList.toggle("cur", k === i));
+  // 换章时收起所有互动屏障，滚轮不再被画布吃掉
+  document.querySelectorAll(".stage.live").forEach(s => s.classList.remove("live"));
+  // 懒加载：当前章与下一章的 iframe
+  [i, i + 1].forEach(k => {
+    const f = pages[k] && pages[k].querySelector("iframe[data-src]");
+    if (f) { f.src = f.dataset.src; delete f.dataset.src; }
+  });
+  pages.forEach(p => { if (p.scrollTo) p.scrollTo(0, 0); });
+  Music.setChapter(CH_MUSIC[i]);
+  railLinks.forEach(a => a.classList.toggle("on", +a.dataset.p === i));
+  nextbtn.textContent = NEXT_LABELS[i];
+  prevbtn.style.display = i === 0 ? "none" : "block";
+}
+nextbtn.addEventListener("click", () => showPage(cur === pages.length - 1 ? 0 : cur + 1));
+prevbtn.addEventListener("click", () => showPage(cur - 1));
+railLinks.forEach(a => a.addEventListener("click", (e) => { e.preventDefault(); showPage(+a.dataset.p); }));
+
+window.addEventListener("keydown", (e) => {
+  if (document.body.classList.contains("editing")) return;
+  if (["ArrowRight", "ArrowDown", "PageDown", " "].includes(e.key)) { e.preventDefault(); showPage(cur + 1); }
+  else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(e.key)) { e.preventDefault(); showPage(cur - 1); }
+  else if (e.key === "Escape") document.querySelectorAll(".stage.live").forEach(s => s.classList.remove("live"));
+});
+window.addEventListener("wheel", (e) => {
+  if (document.body.classList.contains("editing")) return;
+  if (document.querySelector(".stage.live")) return;  // 互动中不翻页
+  const now = Date.now();
+  if (now - lock < 1100 || Math.abs(e.deltaY) < 28) return;
+  lock = now;
+  showPage(cur + (e.deltaY > 0 ? 1 : -1));
+}, { passive: true });
+
+/* ---------- 互动屏障（贰 / 叁两章的 iframe）---------- */
+document.querySelectorAll(".stage").forEach((stage) => {
+  const shield = stage.querySelector(".shield");
+  const exit = stage.querySelector(".exitbtn");
+  if (!shield) return;
+  const enterLive = () => stage.classList.add("live");
+  const leaveLive = () => stage.classList.remove("live");
+  shield.addEventListener("click", enterLive);
+  exit.addEventListener("click", (e) => { e.stopPropagation(); leaveLive(); });
+});
+
+/* ---------- 文字可编辑 ---------- */
+(() => {
+  const SEL = ".pro .eyebrow, .pro h1, .pro .subtitle, .lead h3, .lead p, .step, .chapter h2, .artwork, .desc, .try, .coda .cycle, .coda .fin";
+  const KEY = "yinianxinghe-text-v2";
+  const nodes = [...document.querySelectorAll(SEL)];
+  nodes.forEach(n => n.setAttribute("data-ed", ""));
+  const originals = nodes.map(n => n.innerHTML);
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) || "[]");
+    saved.forEach((h, i) => { if (typeof h === "string" && nodes[i]) nodes[i].innerHTML = h; });
+  } catch (e) {}
+  const editBtn = document.getElementById("edit-btn");
+  const resetBtn = document.getElementById("text-reset");
+  let editing = false, deb = null;
+  function setEditing(v) {
+    editing = v;
+    document.body.classList.toggle("editing", v);
+    nodes.forEach(n => {
+      if (v) {
+        try { n.contentEditable = "plaintext-only"; if (n.contentEditable !== "plaintext-only") throw 0; }
+        catch (e) { n.contentEditable = "true"; }
+      } else n.contentEditable = "false";
+    });
+    editBtn.textContent = v ? "✓ 完成编辑" : "✎ 编辑文字";
+    resetBtn.classList.toggle("hidden", !v);
+  }
+  editBtn.addEventListener("click", () => setEditing(!editing));
+  document.addEventListener("input", () => {
+    if (!editing) return;
+    clearTimeout(deb);
+    deb = setTimeout(() => {
+      try { localStorage.setItem(KEY, JSON.stringify(nodes.map(n => n.innerHTML))); } catch (e) {}
+    }, 400);
+  });
+  resetBtn.addEventListener("click", () => {
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    nodes.forEach((n, i) => n.innerHTML = originals[i]);
+  });
+})();
+
+showPage(0, true);
+</script>
+</body>
+</html>
